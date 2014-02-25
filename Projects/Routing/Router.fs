@@ -7,6 +7,7 @@ open System.Threading
 open System.Threading.Tasks
 open System.Web
 open Microsoft.Owin
+open RequestContext
 
 module Routing =
     type HttpMethod = string
@@ -18,14 +19,6 @@ module Routing =
                         |> Array.toList
         pathItems
 
-    /// Context used by actions
-    [<NoComparison>]
-    type RequestContext = {
-        context : IOwinContext;
-        /// Name/value pairs for matched templates
-        templateValues : Dictionary<string, string>;
-    }
-
     /// Route used for building route matching
     [<NoComparison>]
     [<NoEquality>]
@@ -35,7 +28,15 @@ module Routing =
         action  : (RequestContext -> unit) option;
         /// Http Method (GET/PUT/etc) for this route
         httpMethod: string
-        predicate : (RequestContext -> bool) option;
+        predicates : (RequestContext -> bool) list option;
+    }
+
+    [<NoComparison>]
+    [<NoEquality>]
+    type RouteGroup = {
+        root : string;
+        routes : Route list;
+        predicates : (RequestContext -> bool) list option;
     }
 
     /// Path Items (between /) can be either a template ({id}) or just a simple path part
@@ -70,24 +71,24 @@ module Routing =
         action : (RequestContext -> unit) option
         children : Dictionary<string, RouteNode>
         templateChildren : Dictionary<string, RouteNode>
-        predicate : (RequestContext -> bool) option;
+        predicates : (RequestContext -> bool) list option;
     }
     with 
         /// 
-        member self.insertRoute (pathParts: string list) action predicate : RouteNode =
+        member self.insertRoute (pathParts: string list) action predicates : RouteNode =
             match pathParts with
             | last::[] -> 
-                let leafNode = self.ensureRouteNode last action predicate
+                let leafNode = self.ensureRouteNode last action predicates
                 leafNode
             | first::rest -> 
                 let node = self.ensureRouteNode first None None
-                node.insertRoute rest action predicate
+                node.insertRoute rest action predicates
             | [] -> // Root path
                 match action with // the root only matches if it has an action
-                | Some(a) -> self.ensureRouteNode "" action predicate
+                | Some(a) -> self.ensureRouteNode "" action predicates
                 | None -> failwith "Cannot add leaf node without action!"
 
-        member private self.ensureRouteNode pathPart action predicate =
+        member private self.ensureRouteNode pathPart action predicates =
             let found, node = self.children.TryGetValue(pathPart)
             if found then// If it already exists, we should do some tests on whether there is a predicate etc.
                 node     // since we cannot have two different nodes with action/predicate on the same path, there should at least be a predicate on all but one
@@ -96,7 +97,7 @@ module Routing =
                 let node = { 
                     pathItem = pathItem; 
                     action = action; 
-                    predicate = predicate; 
+                    predicates = predicates; 
                     children = Dictionary<string, RouteNode>();
                     templateChildren = Dictionary<string, RouteNode>()}
                 match pathItem with
@@ -171,7 +172,7 @@ module Routing =
         bush : Dictionary<HttpMethod, RouteNode>
         }
     with
-        member self.ensureHttpMethod httpMethod action predicate =
+        member self.ensureHttpMethod httpMethod action predicates =
             let found, branch = self.bush.TryGetValue(httpMethod)
             if found then
                 branch
@@ -179,17 +180,17 @@ module Routing =
                 let rootNode = { 
                     pathItem = Path(""); 
                     action = action; 
-                    predicate = predicate; 
+                    predicates = predicates; 
                     children = Dictionary<string, RouteNode>();
                     templateChildren = Dictionary<string, RouteNode>()}
                 self.bush.Add(httpMethod, rootNode)
                 rootNode
 
-        member self.insertBranchAndLeaf httpMethod pathParts action predicate =
+        member self.insertBranchAndLeaf httpMethod pathParts action predicates =
             let rootNode = match pathParts with // Special case for root node
-                           | [] -> self.ensureHttpMethod httpMethod action predicate
+                           | [] -> self.ensureHttpMethod httpMethod action predicates
                            | _ -> let httpMethodRoot = self.ensureHttpMethod httpMethod None None
-                                  httpMethodRoot.insertRoute pathParts action predicate
+                                  httpMethodRoot.insertRoute pathParts action predicates
             rootNode
 
         member self.rootNode httpMethod =
@@ -222,10 +223,10 @@ module Routing =
                 | None -> self.NotFound context
                 | Some(action) -> 
                     let requestContext = { context = context; templateValues = node.templateValues }
-                    match node.matchedRoute.predicate with
+                    match node.matchedRoute.predicates with
                     | None -> Task.Run(fun() -> action requestContext)
-                    | Some(predicate) -> 
-                        if predicate requestContext then 
+                    | Some(predicates) -> 
+                        if List.exists (fun predicate -> predicate requestContext) predicates  then 
                             Task.Run(fun() -> action requestContext) 
                         else 
                             self.NotFound context
@@ -241,13 +242,25 @@ module Routing =
                 |> List.iter 
                 (fun route -> 
                     let pathParts = splitRoutePath route.route
-                    methodBushMap.insertBranchAndLeaf route.httpMethod pathParts route.action route.predicate |> ignore) 
+                    methodBushMap.insertBranchAndLeaf route.httpMethod pathParts route.action route.predicates |> ignore) 
 
-    let defaultRoute = { httpMethod = "GET"; route = String.Empty; action = None; predicate = None}
+//        member self.BuildMethodBushG parentRouteGroup routeGroup =
+//            routeGroup 
+//                |> List.sortBy(fun routeGroup -> routeGroup.root)
+//                |> List.iter 
+//                (fun routeGroup -> 
+//                    let pathParts = splitRoutePath route.route
+//                    methodBushMap.insertBranchAndLeaf route.httpMethod pathParts route.action route.predicates |> ignore) 
 
-    let routes r =
-        r
+    let defaultRoute = { httpMethod = "GET"; route = String.Empty; action = None; predicates = None}
+    let defaultRouteGroup = { root = String.Empty; routes = []; predicates = None}
 
+    let routes routes =
+        { defaultRouteGroup with root =""; routes = routes }
+
+    let group path routes =
+        { defaultRouteGroup with root = path; routes = routes }
+        
     let GET path =
         { defaultRoute with httpMethod = "GET"; route = path }
 
@@ -266,5 +279,14 @@ module Routing =
     let view (text:string) (route: Route) =
         { route with action = Some(fun r -> r.context.Response.Write(text))}
 
-    let restrict predicate (route: Route)  =
-        { route with predicate = Some(predicate) }
+    let restrict predicate (route: Route) =
+        { route with predicates = match route.predicates with
+                                  | None -> Some([predicate]) 
+                                  | Some(existing) -> Some(predicate::existing)
+                                  }
+
+//    let restrict (predicate, (route: RouteGroup))  =
+//        { route with predicates = match route.predicates with
+//                                  | None -> Some([predicate]) 
+//                                  | Some(existing) -> Some(predicate::existing)
+//                                  }

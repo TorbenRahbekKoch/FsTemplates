@@ -1,5 +1,6 @@
 ﻿module MyTemplates
 open System.Collections.Generic
+open Routing.RequestContext
 open Routing.Routing
 open Templating
 

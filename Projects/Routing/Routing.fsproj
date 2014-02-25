@@ -21,7 +21,8 @@
     <OutputPath>..\..\Build\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <WarningLevel>5</WarningLevel>
-    <DocumentationFile>..\..\Build\Debug\Routing.XML</DocumentationFile>
+    <DocumentationFile>
+    </DocumentationFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -50,6 +51,8 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="StatusCode.fs" />
+    <Compile Include="RequestContext.fs" />
     <Compile Include="Router.fs" />
     <None Include="packages.config" />
   </ItemGroup>

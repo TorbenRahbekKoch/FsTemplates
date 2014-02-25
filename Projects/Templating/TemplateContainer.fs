@@ -4,6 +4,7 @@ open System.Collections.Generic
 open System.IO
 open System.Xml.Linq
 open System.Xml.XPath
+open Routing.RequestContext
 open Routing.Routing
 
 //type TemplateDocument =
