@@ -45,6 +45,8 @@ let templateAction (container: MyTemplateContainer) (template:Template) =
 let action1 (action:RequestContext -> unit) (route: Route) =
     { route with action = Some(action)}
 
-let template (container: MyTemplateContainer) name (route: Route) =
-    { route with action = Some(templateAction container (container.Item(name)))}
+let template (container: MyTemplateContainer) name (route: RouteEntry) =
+    match route with
+    | Route(route) -> Route {route with action = Some(templateAction container (container.Item(name)))}
+    | RouteGroup(group) -> failwith ("Cannot use template on RouteGroup: " + name)
     

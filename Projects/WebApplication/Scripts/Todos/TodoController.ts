@@ -23,7 +23,7 @@ module todos {
             //private filterFilter
             ) {
             this.todos = $scope.todos = todoService.get();
-
+            
             $scope.newTodo = '';
             $scope.editedTodo = null;
 

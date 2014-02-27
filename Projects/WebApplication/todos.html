@@ -6,6 +6,9 @@
     <title>Super Todo thingy</title>
     <link rel="stylesheet" href="bower_components/todomvc-common/base.css">
     <style>[ng-cloak] { display: none;}</style>
+    <style>        .red label { color: red !important;
+        }
+    </style>
 </head>
 <body>
     <h1>Todos!</h1>
@@ -21,7 +24,7 @@
             <input id="toggle-all" type="checkbox" ng-model="allChecked" ng-click="vm.markAll(allChecked)">
             <label for="toggle-all">Mark all as complete</label>
             <ul id="todo-list">
-                <li ng-repeat="todo in todos | filter:statusFilter track by $index" ng-class="{completed: todo.completed, editing: todo == editedTodo}">
+                <li ng-repeat="todo in todos | filter:statusFilter track by $index" ng-class="{ completed: todo.completed, editing: todo == editedTodo, red: $index % 2}">
                     <div class="view">
                         <input class="toggle" type="checkbox" ng-model="todo.completed">
                         <label ng-dblclick="vm.editTodo(todo)">{{todo.title}}</label>

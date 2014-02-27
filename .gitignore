@@ -1,0 +1,5 @@
+/Build/Debug
+/Build/Release
+/*.user
+/*.suo
+obj
