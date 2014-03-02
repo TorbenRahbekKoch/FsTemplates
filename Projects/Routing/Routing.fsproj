@@ -53,6 +53,7 @@
   <ItemGroup>
     <Compile Include="StatusCode.fs" />
     <Compile Include="RequestContext.fs" />
+    <Compile Include="RouteMatching.fs" />
     <Compile Include="Router.fs" />
     <None Include="packages.config" />
   </ItemGroup>

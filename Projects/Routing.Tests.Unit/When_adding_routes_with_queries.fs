@@ -13,15 +13,19 @@ open Routing.Routing
 open BushHelpers
 
 [<TestFixture>]
-type ``When adding routes``() = 
+type ``When adding routes_with_queries``() = 
 
     [<Test>]
     member x.``Verify that when adding one path the bush contains one root with one child``() = 
-        let child =  { defaultRouteNode() with pathItem = createPathItem("path") }
+        let queries = Dictionary<string, string>()
+        queries.Add("id", "{id}");
+        let child = { defaultRouteNode() with pathItem = createPathItem("path1"); queries = Some(queries) }
         let root = createDefaultRoot [child]
         let expected = defaultBushWithRoot "GET" root
 
-        let routes = [ GET "/path" |> view "Text"]
-        let actual = buildMethodBush routes
+        let group = [ GET "/path1?id={id}" 
+                        |> view "Test";
+                    ]
+        let actual = buildMethodBush group
 
         compareBushes actual expected;

@@ -5,13 +5,13 @@
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>6c1f5629-1e82-456f-936a-845cdaf610f1</ProjectGuid>
+    <ProjectGuid>28f9c7af-dc6a-4c44-8247-b55f4d7dcf87</ProjectGuid>
     <OutputType>Library</OutputType>
-    <RootNamespace>Routing.Tests.Unit</RootNamespace>
-    <AssemblyName>Routing.Tests.Unit</AssemblyName>
+    <RootNamespace>Routing.Tests.Performance</RootNamespace>
+    <AssemblyName>Routing.Tests.Performance</AssemblyName>
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <TargetFSharpCoreVersion>4.3.1.0</TargetFSharpCoreVersion>
-    <Name>Routing.Tests.Unit</Name>
+    <Name>Routing.Tests.Performance</Name>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -21,7 +21,7 @@
     <OutputPath>bin\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <WarningLevel>3</WarningLevel>
-    <DocumentationFile>bin\Debug\Routing.Tests.Unit.XML</DocumentationFile>
+    <DocumentationFile>bin\Debug\Routing.Tests.Performance.XML</DocumentationFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -30,11 +30,12 @@
     <OutputPath>bin\Release\</OutputPath>
     <DefineConstants>TRACE</DefineConstants>
     <WarningLevel>3</WarningLevel>
-    <DocumentationFile>bin\Release\Routing.Tests.Unit.XML</DocumentationFile>
+    <DocumentationFile>bin\Release\Routing.Tests.Performance.XML</DocumentationFile>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Microsoft.Owin">
       <HintPath>..\..\packages\Microsoft.Owin.2.1.0\lib\net45\Microsoft.Owin.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="mscorlib" />
     <Reference Include="FSharp.Core, Version=$(TargetFSharpCoreVersion), Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
@@ -42,6 +43,9 @@
     </Reference>
     <Reference Include="nunit.framework">
       <HintPath>..\..\packages\NUnit.2.6.3\lib\nunit.framework.dll</HintPath>
+    </Reference>
+    <Reference Include="Owin">
+      <HintPath>..\..\packages\Owin.1.0\lib\net40\Owin.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
@@ -49,19 +53,20 @@
     <Reference Include="System.Numerics" />
     <Reference Include="Unquote">
       <HintPath>..\..\packages\Unquote.2.2.2\lib\net40\Unquote.dll</HintPath>
-      <Private>True</Private>
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="CompareBush.fs" />
-    <Compile Include="When_adding_routes.fs" />
-    <Compile Include="When_adding_routes_with_queries.fs" />
-    <Compile Include="When_adding_group_routes.fs" />
     <Compile Include="When_matching_routes.fs" />
-    <None Include="packages.config" />
+    <None Include="Script.fsx" />
     <None Include="App.config" />
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Routing.Tests.Unit\Routing.Tests.Unit.fsproj">
+      <Name>Routing.Tests.Unit</Name>
+      <Project>{6c1f5629-1e82-456f-936a-845cdaf610f1}</Project>
+      <Private>True</Private>
+    </ProjectReference>
     <ProjectReference Include="..\Routing\Routing.fsproj">
       <Name>Routing</Name>
       <Project>{3ff3820f-ac14-4245-a134-24fd3a73e4d8}</Project>

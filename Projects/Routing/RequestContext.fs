@@ -22,6 +22,12 @@ module RequestContext =
        this.context.Response.StatusCode <- Created
        this.Write content
 
+    member self.Method =
+        self.context.Request.Method
+
+    member self.Uri =
+        self.context.Request.Uri
+
     member private this.Write (content: string) =
         let bytes = Encoding.UTF8.GetBytes(content)
         this.context.Response.ContentLength <- System.Nullable (int64 bytes.Length)

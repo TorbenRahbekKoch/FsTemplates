@@ -10,7 +10,7 @@ open System.Collections.Generic
 open NUnit.Framework
 open Swensen.Unquote
 open Routing.Routing
-open CompareBush
+open BushHelpers
 
 [<TestFixture>]
 type ``When adding group routes``() = 
@@ -47,8 +47,9 @@ type ``When adding group routes``() =
     [<Test>]
     member x.``Verify that when adding two groups with one child each the bush contains one root with two children``() = 
         let child1 = { defaultRouteNode() with pathItem = createPathItem("path1") }
-        let child2 = { defaultRouteNode() with pathItem = createPathItem("/api/path2") }
-        let root = createDefaultRoot [child1; child2]
+        let child2 = { defaultRouteNode() with pathItem = createPathItem("path2") }
+        let child3 = createChild "api" [child2]
+        let root = createDefaultRoot [child1; child3]
         let expected = defaultBushWithRoot "GET" root
 
         let group = [ group "/" [
@@ -62,8 +63,9 @@ type ``When adding group routes``() =
 
     [<Test>]
     member x.``Verify that when adding a group with one child group the bush contains one root with one child``() = 
-        let child = { defaultRouteNode() with pathItem = createPathItem("/api/path") }
-        let root = createDefaultRoot [child]
+        let child1 = { defaultRouteNode() with pathItem = createPathItem("path") }
+        let child2 = createChild "api" [child1]
+        let root = createDefaultRoot [child2]
         let expected = defaultBushWithRoot "GET" root
 
         let group = [ group "/" [
