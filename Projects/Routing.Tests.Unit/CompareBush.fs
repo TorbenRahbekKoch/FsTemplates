@@ -2,8 +2,10 @@
 open System.Linq
 open System.Collections.Generic
 open Routing.Routing
+open Routing
 open Swensen.Unquote
 
+// Various helper methods for making the tests more readable
 module BushHelpers = 
     let defaultRouteNode() = 
         { pathItem = createPathItem(""); preAction = None; action= None; queries = None;

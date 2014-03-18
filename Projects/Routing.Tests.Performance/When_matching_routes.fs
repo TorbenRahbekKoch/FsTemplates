@@ -11,39 +11,73 @@ open System.Collections.Generic
 open Microsoft.Owin
 open NUnit.Framework
 open Swensen.Unquote
-open Routing.RequestContext
-open Routing.Routing
+open Routing
 open Routing.Tests.Unit.BushHelpers
 
 [<TestFixture>]
 type ``When matching routes``() = 
 
-    [<Test>]
-    member x.``Verify 5000 matches in 100ms is possible``() = 
+    member x.buildrequestContexts() =
         let child =  { defaultRouteNode() with pathItem = createPathItem("path") }
         let root = createDefaultRoot [child]
         let expected = defaultBushWithRoot "GET" root
 
-        let routes = [ GET "/path" |> view "Text"]
+
+        let paths = [ for x in 0..99 -> "/path" + x.ToString()] 
+                    |> List.collect (fun p -> [for l in 'a'..'y' -> p + "/path" + l.ToString()])
+        
+        let routes = [ for x in 1..2500 -> GET paths.[x %  2500] |> view "Text" ]
+                   @ [ for x in 1..2500 -> POST paths.[x % 2500] |> view "Text" ]
+                   @ [ for x in 1..2500 -> PUT paths.[x %  2500] |> view "Text" ]
+                   @ [ for x in 1..2500 -> DELETE paths.[x % 2500] |> view "Text" ]
         let bush = {bush = buildMethodBush routes }
         
         let request = Microsoft.Owin.OwinRequest()
-        request.Method <- "GET"
         request.Scheme <- "http"
         request.Host <- HostString("localhost")
         request.PathBase <- PathString("/")
-        request.Path <- PathString("/path")
+        request.Path <- PathString("/path0/subpath1/subpath")
 
-        let context = Microsoft.Owin.OwinContext(request.Environment)        
+        request.Method <- "GET"
+        let getContexts = [ for x in 1..2500 -> 
+                            request.Path <- PathString(paths.[x % 2500]) 
+                            ``from context`` (Microsoft.Owin.OwinContext(request.Environment))]
 
-        let requestContext = { context = context; templateValues = Dictionary<string, string>() }
+        request.Method <- "PUT"
+        let putContexts = [ for x in 1..2500 -> 
+                            request.Path <- PathString(paths.[x % 2500]) 
+                            ``from context`` (Microsoft.Owin.OwinContext(request.Environment))]
+        let putContext = Microsoft.Owin.OwinContext(request.Environment)        
 
+        request.Method <- "DELETE"
+        let deleteContexts = [ for x in 1..2500 -> 
+                               request.Path <- PathString(paths.[x % 2500]) 
+                               ``from context`` (Microsoft.Owin.OwinContext(request.Environment))]
+        let deleteContext = Microsoft.Owin.OwinContext(request.Environment)        
+
+        request.Method <- "POST"
+        let postContexts = [ for x in 1..2500 -> 
+                             request.Path <- PathString(paths.[x % 2500]) 
+                             ``from context`` (Microsoft.Owin.OwinContext(request.Environment))]
+
+        let requestContexts = getContexts
+                            @ putContexts
+                            @ postContexts
+                            @ deleteContexts
+        bush, requestContexts.ToArray()
+
+    member x.matchXTimes matchCount = 
+        let bush, requestContexts = x.buildrequestContexts()
         let watch = Stopwatch()
         watch.Start()
-        for count in 1..5000 do
-            bush.matchRequest requestContext |> ignore
-
+        for count in 0..(matchCount-1) do
+            bush.matchRequest (requestContexts.[count]) |> ignore            
         watch.Stop()
-        test <@ watch.ElapsedMilliseconds < 100L @>
+        double watch.ElapsedMilliseconds
+
+    [<Test>]
+    member x.``Verify 10000 matches in 100ms is possible``() = 
+        let elapsedMilliSeconds = x.matchXTimes 9999
+        test <@ elapsedMilliSeconds <= 100.0 @>
         
-        printf "Actual time: %A" watch.ElapsedMilliseconds
+        printfn "Actual time: %A" elapsedMilliSeconds

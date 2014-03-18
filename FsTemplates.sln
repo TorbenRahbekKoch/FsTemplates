@@ -13,12 +13,20 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Templating", "Projects\Temp
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{CF183F09-CF0E-4E7E-A458-8821448573E1}"
 	ProjectSection(SolutionItems) = preProject
+		Performance1.psess = Performance1.psess
+		Performance2.psess = Performance2.psess
 		readme.md = readme.md
 	EndProjectSection
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Routing.Tests.Unit", "Projects\Routing.Tests.Unit\Routing.Tests.Unit.fsproj", "{6C1F5629-1E82-456F-936A-845CDAF610F1}"
 EndProject
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Routing.Tests.Performance", "Projects\Routing.Tests.Performance\Routing.Tests.Performance.fsproj", "{28F9C7AF-DC6A-4C44-8247-B55F4D7DCF87}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Profiling", "Projects\Profiling\Profiling.fsproj", "{BA1EF6E5-E882-4BC0-B4F5-5D3D74DE9023}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "HttpUtility", "Projects\HttpUtility\HttpUtility.fsproj", "{C6A9E234-BF66-4AD5-BA50-F4851459EF44}"
+EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "HttpUtility.Tests.Unit", "Projects\HttpUtility.Tests.Unit\HttpUtility.Tests.Unit.fsproj", "{92C0E608-1310-4BF9-9D8B-F52986C412FD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -50,6 +58,18 @@ Global
 		{28F9C7AF-DC6A-4C44-8247-B55F4D7DCF87}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{28F9C7AF-DC6A-4C44-8247-B55F4D7DCF87}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{28F9C7AF-DC6A-4C44-8247-B55F4D7DCF87}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BA1EF6E5-E882-4BC0-B4F5-5D3D74DE9023}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA1EF6E5-E882-4BC0-B4F5-5D3D74DE9023}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA1EF6E5-E882-4BC0-B4F5-5D3D74DE9023}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA1EF6E5-E882-4BC0-B4F5-5D3D74DE9023}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C6A9E234-BF66-4AD5-BA50-F4851459EF44}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C6A9E234-BF66-4AD5-BA50-F4851459EF44}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C6A9E234-BF66-4AD5-BA50-F4851459EF44}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C6A9E234-BF66-4AD5-BA50-F4851459EF44}.Release|Any CPU.Build.0 = Release|Any CPU
+		{92C0E608-1310-4BF9-9D8B-F52986C412FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{92C0E608-1310-4BF9-9D8B-F52986C412FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{92C0E608-1310-4BF9-9D8B-F52986C412FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{92C0E608-1310-4BF9-9D8B-F52986C412FD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

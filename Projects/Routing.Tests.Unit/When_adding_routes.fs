@@ -1,7 +1,7 @@
 ﻿namespace Routing.Tests.Unit
 #if INTERACTIVE
-#r "packages/Unquote.2.2.2/lib/net40/unquote.dll"
-#r "packages/NUnit.2.6.2/lib/nunit.framework.dll"
+#r "../../packages/Unquote.2.2.2/lib/net40/unquote.dll"
+#r "../../packages/NUnit.2.6.3/lib/nunit.framework.dll"
 #endif    
 
 open System
@@ -9,7 +9,7 @@ open System.Linq
 open System.Collections.Generic
 open NUnit.Framework
 open Swensen.Unquote
-open Routing.Routing
+open Routing
 open BushHelpers
 
 [<TestFixture>]

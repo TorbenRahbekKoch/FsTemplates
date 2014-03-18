@@ -9,7 +9,7 @@ open System.Linq
 open System.Collections.Generic
 open NUnit.Framework
 open Swensen.Unquote
-open Routing.Routing
+open Routing
 open BushHelpers
 
 [<TestFixture>]

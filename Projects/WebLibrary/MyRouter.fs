@@ -38,10 +38,12 @@ type MyRouter(applicationRootDirectory: string) =
 
     override self.Register() =
         routes [
+//            PREREQUEST |> action (fun request -> ())
+//            POSTREQUEST |> action (fun request -> ())
             group "/" [
-//                GET "/{id1}/{id2}" 
-//                    |> action (myIdView()) 
-//                    |> restrict (fun request -> true)
+                GET "/{id1}/{id2}" 
+                    |> action (myIdView()) 
+                    |> restrict (fun request -> true)
 //                GET "/test1" 
 //                    |> view (myView()) 
 //                    |> restrict (fun request -> true)
@@ -60,7 +62,7 @@ type MyRouter(applicationRootDirectory: string) =
 //                    |> view "<html><body><h3>Hello world - test 5/test</h3></body></html>";
 
                 GET "/todos/"
-                    |> self.template "todos";
+                    |> self.template "todos"
         
                 (group "/api/"
                 [
@@ -69,7 +71,7 @@ type MyRouter(applicationRootDirectory: string) =
                             //ctx.AsJson(todos)
                             //ctx.AsXml(todos)
                             let json = JsonConvert.SerializeObject(todos)
-                            ctx.OK json)
+                            ctx.OK json)                        
                     POST "/todos/"
                         //|> restrict (fun ctx -> ctx.context.Request.Headers.ContentLength < 1000)
                         |> restrict (fun ctx -> ctx.context.Request.ContentType.Contains "application/json")

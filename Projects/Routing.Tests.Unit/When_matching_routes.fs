@@ -9,8 +9,7 @@ open System.Linq
 open System.Collections.Generic
 open NUnit.Framework
 open Swensen.Unquote
-open Routing.RequestContext
-open Routing.Routing
+open Routing
 open BushHelpers
 open Microsoft.Owin
 
@@ -34,7 +33,7 @@ type ``When matching routes``() =
 
         let context = Microsoft.Owin.OwinContext(request.Environment)        
 
-        let requestContext = { context = context; templateValues = Dictionary<string, string>() }
+        let requestContext = ``from context`` (Microsoft.Owin.OwinContext(request.Environment))
 
         let matchContext = bush.matchRequest requestContext
 

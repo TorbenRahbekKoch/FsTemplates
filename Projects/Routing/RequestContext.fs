@@ -1,4 +1,5 @@
 ﻿namespace Routing
+[<AutoOpen>]
 module RequestContext = 
     open Microsoft.FSharp.Linq.NullableOperators
     open System.Collections.Generic
@@ -9,8 +10,12 @@ module RequestContext =
 
     /// Context used by actions
     [<NoComparison>]
-    type RequestContext = {
-        context : IOwinContext;
+    type RequestContext = {        
+        //authenticator: Security.IAuthenticationManager option
+        request  : IOwinRequest
+        response : IOwinResponse
+        context  : IOwinContext;
+
         /// Name/value pairs for matched templates
         templateValues : Dictionary<string, string>;
     } with 
@@ -30,6 +35,22 @@ module RequestContext =
 
     member private this.Write (content: string) =
         let bytes = Encoding.UTF8.GetBytes(content)
-        this.context.Response.ContentLength <- System.Nullable (int64 bytes.Length)
-        this.context.Response.Write(bytes)// <- new MemoryStream(bytes)
+        this.response.ContentLength <- System.Nullable (int64 bytes.Length)
+        this.response.Write(bytes)
         
+    member private this.WriteAsync (content: string) =
+        let bytes = Encoding.UTF8.GetBytes(content)
+        this.response.ContentLength <- System.Nullable (int64 bytes.Length)
+        this.response.WriteAsync(bytes)
+        
+[<AutoOpen>]
+module RequestContexts = 
+    open Microsoft.Owin
+    open System.Collections.Generic
+
+    let ``from context`` (context: IOwinContext) = 
+        { context = context; request = context.Request; response = context.Response; templateValues = Dictionary<string, string>() }
+
+    let ``with context and values`` (context: IOwinContext) (templateValues: Dictionary<string, string>)= 
+        { context = context; request = context.Request; response = context.Response; templateValues = templateValues }
+
