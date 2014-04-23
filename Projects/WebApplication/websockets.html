@@ -1,0 +1,43 @@
+﻿<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Websocket tester</title>
+    <script>
+        function init() {
+            //websocket = new WebSocket("ws://softwarepassion.azurewebsites.net/api/observers");
+            websocket = new WebSocket("ws://localhost:49185/api/observers");
+
+            websocket.onopen = function () { document.getElementById("output").innerHTML += "<p>> CONNECTED</p>"; };
+
+            websocket.onmessage = function (evt) { document.getElementById("output").innerHTML += "<p style='color: blue;'>> RESPONSE: " + evt.data + "</p>"; };
+
+            websocket.onerror = function (evt) { document.getElementById("output").innerHTML += "<p style='color: red;'>> ERROR: " + evt.data + "</p>"; };
+
+            document.getElementById("input").onkeypress = processKeyPress;
+        }
+
+        function sendMessage(message) {
+            document.getElementById("output").innerHTML += "<p>> SENT: " + message + "</p>";
+
+            websocket.send(message);
+        }
+
+        
+        processKeyPress = function (event) {
+            if (event.keyCode == 13)
+            {
+                sendMessage(document.getElementById("input").value)
+            }
+        };
+
+        window.addEventListener("load", init, false);
+    </script>
+</head>
+<body>
+    <h1>Websocket Test!</h1>
+    <input id="input" />
+    <div id="output"></div>
+</body>
+</html>
