@@ -1,7 +1,6 @@
 ﻿module MyTemplates
 open System.Collections.Generic
-open Routing.RequestContext
-open Routing.Routing
+open Routing
 open Templating
 
 
@@ -27,7 +26,10 @@ type MyTemplateContainer(physicalTemplateRoot: string) =
                 (actions 
                     [ replace "{CurrentTime}" (fun ctx -> System.DateTime.Now.ToString());] 
                     @ scriptBundles
-                    @ styleBundles)
+                    @ styleBundles);
+              fileTextTemplate "websockets"
+                (physicalTemplateRoot + "/websockets.html")
+                (actions []);
             ]
             |> List.map(fun item -> (item.name, item))
             |> dict
@@ -41,13 +43,14 @@ type MyTemplateContainer(physicalTemplateRoot: string) =
 let templateAction (container: MyTemplateContainer) (template:Template) =
     fun (r: RequestContext) ->        
         r.context.Response.Write(container.ExecuteTemplate template r)
+        ContinueRequest
     
-let action1 (action:RequestContext -> unit) (route: Route) =
-    { route with action = Some(action)}
+//let action1 (action:Action) (route: Route) =
+//    { route with action = action}
 
 let template (container: MyTemplateContainer) name (route: RouteEntry) =
     match route with
-    | Route(route)          -> Route {route with action = Some(templateAction container (container.Item(name)))}
+    | Route(route)          -> Route {route with action = templateAction container (container.Item(name))}
     | RouteGroup(group)     -> failwith ("Cannot use template on RouteGroup: " + name)
     | RequestPipeline(_)    -> failwith ("Cannot use template on RequestPipeline: " + name)
     

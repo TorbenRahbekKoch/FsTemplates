@@ -8,7 +8,7 @@ open Swensen.Unquote
 // Various helper methods for making the tests more readable
 module BushHelpers = 
     let defaultRouteNode() = 
-        { pathItem = createPathItem(""); preAction = None; action= None; queries = None;
+        { pathItem = createPathItem(""); preAction = None; action= (fun ctx -> ContinueRequest); queries = None;
           children = Dictionary<string, RouteNode>(); templateChildren = Dictionary<string, RouteNode>(); predicates = None}
 
     let defaultBush() = { bush = Dictionary<HttpMethod,RouteNode>()}

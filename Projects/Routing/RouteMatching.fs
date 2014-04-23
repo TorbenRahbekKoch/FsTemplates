@@ -5,12 +5,18 @@ module RouteMatching =
     open System.Linq
     open Routing.RequestContext
 
+    type ActionResult =
+    | StopRequest
+    | ContinueRequest
+
+    type Action = RequestContext -> ActionResult
+
     [<NoComparison>]
     [<NoEquality>]
     type MatchContext = {
         requestContext  : RequestContext;
-        preAction       : (RequestContext -> unit) option;
-        action          : (RequestContext -> unit) option;
+        preAction       : Action option;
+        action          : Action;
         templateValues  : Dictionary<string, string>;
     }
 
@@ -22,7 +28,7 @@ module RouteMatching =
         override self.ToString() =
             match self with
             | Template(s) -> s
-            | Path(s) -> s
+            | Path(s)     -> s
 
     /// Create a PathItem from a pathPart/template
     let createPathItem (pathPart: string) =
@@ -42,8 +48,8 @@ module RouteMatching =
         RouteNode = {
             pathItem  : PathItem
             queries   : Dictionary<string, string> option
-            preAction : (RequestContext -> unit) option
-            action    : (RequestContext -> unit) option
+            preAction : Action option
+            action    : Action
             children  : Dictionary<string, RouteNode>
             templateChildren : Dictionary<string, RouteNode>
             predicates       : (RequestContext -> bool) list option;
@@ -56,12 +62,13 @@ module RouteMatching =
                 let leafNode = self.ensureRouteNode last preAction action predicates
                 leafNode
             | first::rest -> 
-                let node = self.ensureRouteNode first None None None
+                let node = self.ensureRouteNode first None (fun ctx -> ContinueRequest) None
                 node.insertRoute rest preAction action predicates
-            | [] -> // Root path
-                match action with // the root only matches if it has an action
-                | Some(a) -> self.ensureRouteNode "" preAction action predicates
-                | None -> failwith "Cannot add leaf node without action!"
+            // Root path
+            | [] -> self.ensureRouteNode "" preAction action predicates 
+//                match action with // the root only matches if it has an action
+//                | Some(a) -> self.ensureRouteNode "" preAction action predicates
+//                | None -> failwith "Cannot add leaf node without action!"
 
         member private self.ensureRouteNode pathPart preAction action predicates =
             let found, node = self.children.TryGetValue(pathPart)
@@ -110,9 +117,8 @@ module RouteMatching =
                                                 .ToDictionary((fun item -> item.Key), (fun (item: KeyValuePair<string,string>) -> item.Value))
                             Some({ matchedChildNode with templateValues = allTemplateValues })
             | _ -> // Trying to match root node                
-                match self.action with
-                | Some(action) -> Some({ matchedRoute = self; templateValues = Dictionary<string, string>()})
-                | None -> None
+                Some({ matchedRoute = self; templateValues = Dictionary<string, string>()})
+                
 
         /// 
         member private self.tryFindMatchingChildNode pathPart = 
@@ -145,7 +151,7 @@ module RouteMatching =
             pathItem = Path(""); 
             queries = None;
             preAction = None;
-            action = None; 
+            action = (fun ctx -> ContinueRequest); 
             predicates = None; 
             children = Dictionary<string, RouteNode>();
             templateChildren = Dictionary<string, RouteNode>()

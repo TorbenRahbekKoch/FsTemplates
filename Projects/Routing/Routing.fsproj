@@ -51,7 +51,9 @@
     <Reference Include="System.Numerics" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="RequestExtensions.fs" />
     <Compile Include="StatusCode.fs" />
+    <Compile Include="Methods.fs" />
     <Compile Include="RequestContext.fs" />
     <Compile Include="RouteMatching.fs" />
     <Compile Include="Router.fs" />

@@ -9,7 +9,6 @@ open System.Web
 open Microsoft.Owin
 open Routing
 open RequestContext
-//open Route
 
 [<AutoOpen>]
 module Routing =
@@ -30,16 +29,17 @@ module Routing =
 //        (pathItems, uri.Query)
     
     /// Route used for building route matching
+
     [<NoComparison>]
     [<NoEquality>]
     type Route = {
         /// Http Method (GET/PUT/etc) for this route
         httpMethod: string
         /// The full, host-relative path, eventually with query string
-        route : string;
-        preAction : (RequestContext -> unit) option;
-        action    : (RequestContext -> unit) option;
-        predicates : (RequestContext -> bool) list option;
+        route : string
+        preAction : Action option
+        action    : Action
+        predicates : (RequestContext -> bool) list option
     }
     and RequestPipelineType = 
     | Pre
@@ -48,17 +48,17 @@ module Routing =
         [<NoEquality>]
     RequestPipeline = {
         requestType : RequestPipelineType 
-        action      : (RequestContext -> unit) option
-        predicates  : (RequestContext -> bool) list option;
+        action      : Action
+        predicates  : (RequestContext -> bool) list option
     }
     and [<NoComparison>]
         [<NoEquality>]
     RouteGroup = {
         rootRoute : string;
         routes : RouteEntry list;
-        action  : (RequestContext -> unit) option;
+        action  : Action option;
         queries : Dictionary<string, string> option;
-        predicates : (RequestContext -> bool) list option;
+        predicates : (RequestContext -> bool) list option
     }
     and [<NoComparison>]
         [<NoEquality>]
@@ -67,113 +67,249 @@ module Routing =
         | RouteGroup of RouteGroup   
         | RequestPipeline of RequestPipeline
     
-    let defaultRequestPipeline = { requestType = Pre; action = None; predicates = None }
-    let defaultRoute = { httpMethod = "GET"; route = String.Empty; preAction = None; action = None; predicates = None}
+    let defaultRoute = { httpMethod = "GET"; route = String.Empty; preAction = None; action = (fun ctx -> ContinueRequest); predicates = None}
     let defaultRouteGroup = { rootRoute = String.Empty; routes = []; predicates = None; action = None; queries = None}
+    let defaultRequestPipeline = { requestType = Pre; action = (fun ctx -> ContinueRequest); predicates = None }
 
+module MethodBush = 
     // TODO: Implement a consistency check, which can check for e.g. duplicate template values in a path
-    [<NoComparison>]
-    [<NoEquality>]
-    type HttpMethodBush = {
-        bush : Dictionary<HttpMethod, RouteNode>
-    }
-    with
-        member private self.ensureHttpMethod httpMethod preAction action predicates =
-            let found, branch = self.bush.TryGetValue(httpMethod)
-            if found then
-                branch
-            else
-                let rootNode = { defaultRouteNode() with 
-                                    action = action; 
-                                    preAction = preAction; 
-                                    predicates = predicates; 
-                               }
-                self.bush.Add(httpMethod, rootNode)
-                rootNode
+//    [<NoComparison>]
+//    [<NoEquality>]
+//    type HttpMethodBush = {
+//        bush     : Dictionary<HttpMethod, RouteNode>
+//    }
+//    with
+//        member self.rootNode httpMethod =
+//            self.bush.[httpMethod]
+//
+//        member self.BuildMethodBush routeEntries =
+//            let rec buildBush parentRouteGroup routeEntries =
+//                routeEntries
+//                |> List.collect(fun routeEntry -> 
+//                    match routeEntry with
+//                    | Route(route)              -> [ {route with route = parentRouteGroup.rootRoute + route.route; preAction = route.preAction; action=route.action} ]
+//                    | RouteGroup(routeGroup)    -> buildBush routeGroup routeGroup.routes
+//                    | RequestPipeline(pipeline) -> [])
+//                |> List.sortBy(fun route -> route.route)
+//
+//            buildBush defaultRouteGroup routeEntries
+//            |> List.iter (fun route ->
+//                let pathParts, queryPart = splitRoutePath route.route
+//                self.insertBranchAndLeaf route.httpMethod pathParts route.preAction route.action route.predicates |> ignore) 
+//
+    let rootNode httpMethod (bush: Map<HttpMethod, RouteNode>) =
+        bush.[httpMethod]
+        
+    let matchRequest (requestContext: RequestContext) (bush: Map<HttpMethod, RouteNode>)=
+        let absoluteUriPath = requestContext.Uri.AbsolutePath
+        let rootNode = rootNode requestContext.Method bush
+        let pathParts, query = splitRoutePath absoluteUriPath
+        let node = rootNode.findMatchingLeafNode pathParts
+        match node with
+        | None -> None
+        | Some(node) ->
+            let matchContext = { 
+                requestContext = requestContext; 
+                preAction = node.matchedRoute.preAction;
+                action = node.matchedRoute.action;
+                templateValues = node.templateValues }
+            match node.matchedRoute.predicates with
+            | None -> Some(matchContext)
+            | Some(predicates) -> 
+                if List.forall (fun predicate -> predicate requestContext) predicates  then 
+                    Some(matchContext)
+                else 
+                    None
 
-        member self.insertBranchAndLeaf httpMethod pathParts preAction action predicates =
-            let rootNode = match pathParts with // Special case for root node
-                           | [] -> self.ensureHttpMethod httpMethod preAction action predicates
-                           | _ -> let httpMethodRoot = self.ensureHttpMethod httpMethod None None None
-                                  httpMethodRoot.insertRoute pathParts preAction action predicates
+module RouteBuilding =
+    open Routing
+
+    let ensureHttpMethod (bush: Dictionary<HttpMethod, RouteNode>) httpMethod preAction action predicates =
+        let found, branch = bush.TryGetValue(httpMethod)
+        if found then
+            branch
+        else
+            let rootNode = { defaultRouteNode() with 
+                                action = action; 
+                                preAction = preAction; 
+                                predicates = predicates; 
+                            }
+            bush.Add(httpMethod, rootNode)
             rootNode
 
-        member self.rootNode httpMethod =
-            self.bush.[httpMethod]
+    let insertBranchAndLeaf (bush: Dictionary<HttpMethod, RouteNode>) httpMethod pathParts preAction action predicates =
+        let rootNode = match pathParts with // Special case for root node
+                        | [] -> ensureHttpMethod bush httpMethod preAction action predicates
+                        | _ -> let httpMethodRoot = ensureHttpMethod bush httpMethod None (fun ctx -> ContinueRequest) None
+                               httpMethodRoot.insertRoute pathParts preAction action predicates
+        rootNode
 
-        member self.BuildMethodBush routeEntries =
-            let rec buildBush parentRouteGroup routeEntries =
-                routeEntries
-                |> List.collect(fun routeEntry -> 
-                    match routeEntry with
-                    | Route(route)           -> [ {route with route = parentRouteGroup.rootRoute + route.route; preAction = route.preAction; action=route.action} ]
-                    | RouteGroup(routeGroup) -> buildBush routeGroup routeGroup.routes
-                    | RequestPipeline(_)     -> failwith "RequestPipeline not yet supported. Sorry!")
-                |> List.sortBy(fun route -> route.route)
-            buildBush defaultRouteGroup routeEntries
-            |> List.iter (fun route ->
-                let pathParts, queryPart = splitRoutePath route.route
-                self.insertBranchAndLeaf route.httpMethod pathParts route.preAction route.action route.predicates |> ignore) 
 
-        member self.matchRequest (requestContext: RequestContext) =
-            let absoluteUriPath = requestContext.Uri.AbsolutePath
-            let rootNode = self.rootNode requestContext.Method
-            let pathParts, query = splitRoutePath absoluteUriPath
-            let node = rootNode.findMatchingLeafNode pathParts
-            match node with
-            | None -> None
-            | Some(node) ->
-                match node.matchedRoute.action with
-                | None -> None
-                | Some(action) -> 
-                    let matchContext = { 
-                        requestContext = requestContext; 
-                        preAction = node.matchedRoute.preAction;
-                        action = node.matchedRoute.action;
-                        templateValues = node.templateValues }
-                    match node.matchedRoute.predicates with
-                    | None -> Some(matchContext)
-                    | Some(predicates) -> 
-                        if List.exists (fun predicate -> predicate requestContext) predicates  then 
-                            Some(matchContext)
-                        else 
-                            None
+    let buildMethodBush routeEntries =
+        let bush = Dictionary<HttpMethod, RouteNode>()
+        let rec buildBush parentRouteGroup routeEntries =
+            routeEntries
+            |> List.collect(fun routeEntry -> 
+                match routeEntry with
+                | Route(route)              -> 
+                    [ {route with route = parentRouteGroup.rootRoute + route.route; preAction = route.preAction; action=route.action} ]
+                | RouteGroup(routeGroup)    -> buildBush routeGroup routeGroup.routes
+                | RequestPipeline(pipeline) -> [])
+            |> List.sortBy(fun route -> route.route)
+
+        buildBush defaultRouteGroup routeEntries
+        |> List.iter (fun route ->
+            let pathParts, queryPart = splitRoutePath route.route
+            insertBranchAndLeaf bush route.httpMethod pathParts route.preAction route.action route.predicates |> ignore) 
+        [for keyValue in bush -> (keyValue.Key, keyValue.Value)]
+        |> Map.ofList
+
+    let addRequestPipeline (requestPipelines: Dictionary<RequestPipelineType, List<RequestPipeline>>) requestPipeline =
+        let found, pipelines = requestPipelines.TryGetValue(requestPipeline.requestType)            
+        if not found then 
+            let pipelines = List<RequestPipeline>()
+            pipelines.Add(requestPipeline)
+            requestPipelines.Add(requestPipeline.requestType, pipelines)
+        else
+            pipelines.Add(requestPipeline)
+
+
+    let buildRequestPipeline routeEntries =
+        let requestPipelines = Dictionary<RequestPipelineType, List<RequestPipeline>>()
+        routeEntries
+        |> List.iter(fun entry -> 
+            match entry with
+            | RequestPipeline(pipeline) -> addRequestPipeline requestPipelines pipeline
+            | _ -> ())
+        [for keyValue in requestPipelines -> (keyValue.Key, List.ofSeq keyValue.Value)]
+            |> Map.ofList
+
+
+[<AutoOpen>]
+module Router =
+    open RouteBuilding
+
+//    [<NoComparison>]
+//    [<NoEquality>]
+//    type Router = {
+//        methodBushMap : Map<HttpMethod, RouteNode>
+//        requestPipeline : Map<RequestPipelineType, RequestPipeline list>
+//    }
+
+//    let create routeEntries =        
+//        let methodBush = buildMethodBush routeEntries
+//        let requestPipeline = buildRequestPipeline routeEntries
+//        
+//        Router_2(methodBush, requestPipeline)
+        
 
     [<AbstractClass>]
-    type Router() = 
-        let methodBushMap = { bush = Dictionary<HttpMethod, RouteNode>()}
-
-        member this.MethodBush with get () = methodBushMap
-
-        member self.Init() =
-            self.Register() |> self.BuildMethodBush
-            self
-
-        abstract Register : unit -> RouteEntry list
+    type Router(routeEntries) = //  (methodBush: Map<HttpMethod, RouteNode>, requestPipeline: Map<RequestPipelineType, RequestPipeline list>) = 
+        let methodBush = RouteBuilding.buildMethodBush routeEntries
+        let requestPipeline = RouteBuilding.buildRequestPipeline routeEntries
+//        member self.MethodBush with get() = methodBush;
+//        member self.RequestPipeline with get() = requestPipeline
 
         member self.ExecuteRequestAsync (context: IOwinContext): Task =
             let r = context.Request
             
             let requestContext = ``from context`` context 
-            let matchContext = self.MethodBush.matchRequest requestContext
 
-            let executeAction (matchContext: MatchContext) =
-                match matchContext.action with
-                | None -> Task.FromResult(0) :> Task
-                | Some(action) -> 
-                    Task.Run(fun() -> action { matchContext.requestContext with templateValues = matchContext.templateValues }) 
+            let actionResult = self.executeRequestPipeline RequestPipelineType.Pre requestContext
+            match actionResult with
+            | StopRequest -> Task.FromResult 0 :> Task
+            | ContinueRequest -> 
+                let matchContext = MethodBush.matchRequest requestContext methodBush
 
-            match matchContext with
-            | None -> self.NotFound context
-            | Some(m) -> executeAction m
+                let executeActions (matchContext: MatchContext) =
+                    let getExecutableAction action =
+                        match action with
+                        | None          -> (fun requestContext -> ContinueRequest)
+                        | Some(action)  -> (fun requestContext -> action requestContext)
+
+                    let preAction = getExecutableAction matchContext.preAction
+                    let requestContext = { matchContext.requestContext with templateValues = matchContext.templateValues }                
+                
+                    Async.StartAsTask(
+                        async {
+                            let preActionResult = preAction requestContext
+                            match preActionResult with
+                            | StopRequest -> ()
+                            | ContinueRequest -> matchContext.action requestContext |> ignore                    
+                        },
+                        TaskCreationOptions.None,
+                        requestContext.request.CallCancelled) :> Task
+
+                match matchContext with
+                | None -> self.NotFound context
+                | Some(m) -> executeActions m
+
+        member private self.executeRequestPipeline requestPipelineType (requestContext: RequestContext) =
+            let pipelines = requestPipeline.TryFind(requestPipelineType)
+            match pipelines with
+            | None            -> ContinueRequest
+            | Some(pipelines) ->
+                let executeConditional (action: Action) predicates =
+                    match predicates with
+                    | None      -> ContinueRequest
+                    | Some(predicates) -> 
+                        if List.forall(fun predicate -> predicate requestContext) predicates then
+                            action requestContext
+                        else
+                            ContinueRequest
+
+                let actionResult = pipelines |> List.tryPick(fun pipeline -> 
+                        match executeConditional pipeline.action pipeline.predicates with
+                        | ContinueRequest -> Some(ContinueRequest)
+                        | StopRequest     -> None)
+                match actionResult with
+                | Some(actionResult) -> actionResult
+                | None               -> StopRequest
 
         member private self.NotFound (context: IOwinContext) =
                 context.Response.StatusCode <- 404
                 context.Response.Write("No matching route found.")
                 Task.FromResult(0) :> Task
-        
-        member private self.BuildMethodBush routeEntries =
-            methodBushMap.BuildMethodBush routeEntries
+
+//self.executeRequestPipeline RequestPipelineType.Post requestContext//
+//        member this.MethodBush with get () = methodBushMap
+//        //member this.RequestPipeline with get() = ref requestPipeline
+//
+//        member self.Init() =
+//            self.Register() 
+//            |> self.BuildRequestPipeline
+//            |> self.BuildMethodBush
+//            self
+//
+//        abstract Register : unit -> RouteEntry list
+//
+
+//
+
+//        
+//        member private self.BuildMethodBush routeEntries =
+//            methodBushMap.BuildMethodBush routeEntries
+//
+//        member private self.BuildRequestPipeline routeEntries =
+//            let requestPipelines = Dictionary<RequestPipelineType, List<RequestPipeline>>()
+//            routeEntries
+//            |> List.iter(fun entry -> 
+//                match entry with
+//                | RequestPipeline(pipeline) -> self.addRequestPipeline requestPipelines pipeline
+//                | _ -> ())
+//            self.requestPipeline <- [for keyValue in requestPipelines -> (keyValue.Key, List.ofSeq keyValue.Value)]
+//                |> Map.ofList
+//            routeEntries
+//
+//        member self.addRequestPipeline (requestPipelines: Dictionary<RequestPipelineType, List<RequestPipeline>>) requestPipeline =
+//            let found, pipelines = requestPipelines.TryGetValue(requestPipeline.requestType)            
+//            if not found then 
+//                let pipelines = List<RequestPipeline>()
+//                pipelines.Add(requestPipeline)
+//                requestPipelines.Add(requestPipeline.requestType, pipelines)
+//            else
+//                pipelines.Add(requestPipeline)
+
 
     let predicates predicates predicate =
         match predicates with
@@ -204,17 +340,18 @@ module Routing =
     let POSTREQUEST =
         RequestPipeline { defaultRequestPipeline with requestType = Post}
 
-    let action (action:RequestContext -> unit) (routeEntry: RouteEntry) =
+    let action (action: Action) (routeEntry: RouteEntry) =
         match routeEntry with
-        | Route(route)              -> Route { route with action = Some(action) }
+        | Route(route)              -> Route { route with action = action }
         | RouteGroup(group)         -> RouteGroup { group with action = Some(action)}
-        | RequestPipeline(request)  -> RequestPipeline { request with action = Some(action) }
+        | RequestPipeline(request)  -> RequestPipeline { request with action = action }
 
-    let view (text:string) (routeEntry: RouteEntry) =
-        match routeEntry with
-        | Route(route)              -> Route {route with action = Some(fun r -> r.context.Response.Write(text))}
-        | RouteGroup(group)         -> failwith "Cannot use view on RouteGroup."
-        | RequestPipeline(request)  -> failwith "Cannot use view on Request."
+    let view (text:string) (Route route) =
+        Route {route with action = (fun r -> r.context.Response.Write(text);ContinueRequest)}
+//        match routeEntry with
+//        | Route(route)              -> Route {route with action = Some(fun r -> r.context.Response.Write(text))}
+//        | RouteGroup(group)         -> failwith "Cannot use view on RouteGroup."
+//        | RequestPipeline(request)  -> failwith "Cannot use view on RequestPipelines."
 
     let restrict predicate (routeEntry: RouteEntry) =
         match routeEntry with

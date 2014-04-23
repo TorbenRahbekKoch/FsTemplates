@@ -5,8 +5,14 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>Super Todo thingy</title>
     <link rel="stylesheet" href="bower_components/todomvc-common/base.css">
-    <style>[ng-cloak] { display: none;}</style>
-    <style>        .red label { color: red !important;
+    <style>
+        [ng-cloak] {
+            display: none;
+        }
+    </style>
+    <style>
+        .red label {
+            color: red !important;
         }
     </style>
 </head>
@@ -66,6 +72,9 @@
             <a href="http://zamboch.blogspot.com">Pavel Savara</a>
         </p>
     </footer>
+    <script>
+        var ws = new WebSocket("ws://localhost:49185/api/observers/");
+    </script>
     <!--<script src="bower_components/todomvc-common/base.js"></script>
     <script src="bower_components/angular/angular.js"></script>-->
 
@@ -84,4 +93,5 @@
         <h1>Hello {{yourName}}!</h1>
     </div>
 </body>
-</html>-->  
+</html>-->
+  

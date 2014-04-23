@@ -10,6 +10,7 @@ open System.Collections.Generic
 open NUnit.Framework
 open Swensen.Unquote
 open Routing
+open Router
 open BushHelpers
 
 [<TestFixture>]
