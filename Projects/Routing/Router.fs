@@ -39,7 +39,7 @@ module Routing =
         route : string
         preAction : Action option
         action    : Action
-        predicates : (RequestContext -> bool) list option
+        restrictions : Restriction list option
     }
     and RequestPipelineType = 
     | Pre
@@ -49,7 +49,7 @@ module Routing =
     RequestPipeline = {
         requestType : RequestPipelineType 
         action      : Action
-        predicates  : (RequestContext -> bool) list option
+        restrictions: Restriction list option
     }
     and [<NoComparison>]
         [<NoEquality>]
@@ -58,7 +58,7 @@ module Routing =
         routes : RouteEntry list;
         action  : Action option;
         queries : Dictionary<string, string> option;
-        predicates : (RequestContext -> bool) list option
+        restrictions : Restriction list option
     }
     and [<NoComparison>]
         [<NoEquality>]
@@ -67,9 +67,9 @@ module Routing =
         | RouteGroup of RouteGroup   
         | RequestPipeline of RequestPipeline
     
-    let defaultRoute = { httpMethod = "GET"; route = String.Empty; preAction = None; action = (fun ctx -> ContinueRequest); predicates = None}
-    let defaultRouteGroup = { rootRoute = String.Empty; routes = []; predicates = None; action = None; queries = None}
-    let defaultRequestPipeline = { requestType = Pre; action = (fun ctx -> ContinueRequest); predicates = None }
+    let defaultRoute = { httpMethod = "GET"; route = String.Empty; preAction = None; action = (fun ctx -> ContinueRequest); restrictions = None}
+    let defaultRouteGroup = { rootRoute = String.Empty; routes = []; restrictions = None; action = None; queries = None}
+    let defaultRequestPipeline = { requestType = Pre; action = (fun ctx -> ContinueRequest); restrictions = None }
 
 module MethodBush = 
     // TODO: Implement a consistency check, which can check for e.g. duplicate template values in a path
@@ -113,18 +113,24 @@ module MethodBush =
                 preAction = node.matchedRoute.preAction;
                 action = node.matchedRoute.action;
                 templateValues = node.templateValues }
-            match node.matchedRoute.predicates with
+            match node.matchedRoute.restrictions with
             | None -> Some(matchContext)
-            | Some(predicates) -> 
-                if List.forall (fun predicate -> predicate requestContext) predicates  then 
-                    Some(matchContext)
-                else 
-                    None
+            | Some(restrictions) -> 
+                let restrictResult = restrictions |> List.fold(fun state item -> 
+                        match state with
+                        | Matched    -> item requestContext
+                        | NotMatched -> NotMatched
+                        | NotMatchedStopRequest -> NotMatchedStopRequest) Matched 
+                match restrictResult with
+                | Matched    -> Some(matchContext)
+                | NotMatched -> None
+                | NotMatchedStopRequest -> None
+//                if List.forall (fun restriction -> (restriction requestContext) = Matched) restrictions then 
+//                    Some(matchContext)
+//                else 
+//                    None
 
-module RouteBuilding =
-    open Routing
-
-    let ensureHttpMethod (bush: Dictionary<HttpMethod, RouteNode>) httpMethod preAction action predicates =
+    let ensureHttpMethod (bush: Dictionary<HttpMethod, RouteNode>) httpMethod preAction action restrictions =
         let found, branch = bush.TryGetValue(httpMethod)
         if found then
             branch
@@ -132,20 +138,20 @@ module RouteBuilding =
             let rootNode = { defaultRouteNode() with 
                                 action = action; 
                                 preAction = preAction; 
-                                predicates = predicates; 
+                                restrictions = restrictions; 
                             }
             bush.Add(httpMethod, rootNode)
             rootNode
 
-    let insertBranchAndLeaf (bush: Dictionary<HttpMethod, RouteNode>) httpMethod pathParts preAction action predicates =
+    let insertBranchAndLeaf (bush: Dictionary<HttpMethod, RouteNode>) httpMethod pathParts preAction action restrictions =
         let rootNode = match pathParts with // Special case for root node
-                        | [] -> ensureHttpMethod bush httpMethod preAction action predicates
+                        | [] -> ensureHttpMethod bush httpMethod preAction action restrictions
                         | _ -> let httpMethodRoot = ensureHttpMethod bush httpMethod None (fun ctx -> ContinueRequest) None
-                               httpMethodRoot.insertRoute pathParts preAction action predicates
+                               httpMethodRoot.insertRoute pathParts preAction action restrictions
         rootNode
 
 
-    let buildMethodBush routeEntries =
+    let create routeEntries =
         let bush = Dictionary<HttpMethod, RouteNode>()
         let rec buildBush parentRouteGroup routeEntries =
             routeEntries
@@ -160,9 +166,13 @@ module RouteBuilding =
         buildBush defaultRouteGroup routeEntries
         |> List.iter (fun route ->
             let pathParts, queryPart = splitRoutePath route.route
-            insertBranchAndLeaf bush route.httpMethod pathParts route.preAction route.action route.predicates |> ignore) 
+            insertBranchAndLeaf bush route.httpMethod pathParts route.preAction route.action route.restrictions |> ignore) 
         [for keyValue in bush -> (keyValue.Key, keyValue.Value)]
         |> Map.ofList
+
+module RouteBuilding =
+    open Routing
+
 
     let addRequestPipeline (requestPipelines: Dictionary<RequestPipelineType, List<RequestPipeline>>) requestPipeline =
         let found, pipelines = requestPipelines.TryGetValue(requestPipeline.requestType)            
@@ -205,7 +215,7 @@ module Router =
 
     [<AbstractClass>]
     type Router(routeEntries) = //  (methodBush: Map<HttpMethod, RouteNode>, requestPipeline: Map<RequestPipelineType, RequestPipeline list>) = 
-        let methodBush = RouteBuilding.buildMethodBush routeEntries
+        let methodBush = MethodBush.create routeEntries
         let requestPipeline = RouteBuilding.buildRequestPipeline routeEntries
 //        member self.MethodBush with get() = methodBush;
 //        member self.RequestPipeline with get() = requestPipeline
@@ -214,7 +224,7 @@ module Router =
             let r = context.Request
             
             let requestContext = ``from context`` context 
-
+            
             let actionResult = self.executeRequestPipeline RequestPipelineType.Pre requestContext
             match actionResult with
             | StopRequest -> Task.FromResult 0 :> Task
@@ -249,17 +259,23 @@ module Router =
             match pipelines with
             | None            -> ContinueRequest
             | Some(pipelines) ->
-                let executeConditional (action: Action) predicates =
-                    match predicates with
+                let executeConditional (action: Action) restrictions =
+                    match restrictions with
                     | None      -> ContinueRequest
-                    | Some(predicates) -> 
-                        if List.forall(fun predicate -> predicate requestContext) predicates then
-                            action requestContext
-                        else
-                            ContinueRequest
+                    | Some(restrictions) -> 
+                        let restrictResult = restrictions |> List.fold(fun state item -> 
+                                match state with
+                                | Matched    -> item requestContext
+                                | NotMatched -> NotMatched
+                                | NotMatchedStopRequest -> NotMatchedStopRequest) Matched 
+
+                        match restrictResult with
+                        | Matched    -> action requestContext
+                        | NotMatched -> ContinueRequest
+                        | NotMatchedStopRequest -> StopRequest
 
                 let actionResult = pipelines |> List.tryPick(fun pipeline -> 
-                        match executeConditional pipeline.action pipeline.predicates with
+                        match executeConditional pipeline.action pipeline.restrictions with
                         | ContinueRequest -> Some(ContinueRequest)
                         | StopRequest     -> None)
                 match actionResult with
@@ -311,10 +327,10 @@ module Router =
 //                pipelines.Add(requestPipeline)
 
 
-    let predicates predicates predicate =
-        match predicates with
-        | None           -> Some([predicate])
-        | Some(existing) -> Some(predicate::existing)
+    let restrictions restrictions restriction =
+        match restrictions with
+        | None           -> Some([restriction])
+        | Some(existing) -> Some(restriction::existing)
 
     let routes routes =
         routes
@@ -353,12 +369,15 @@ module Router =
 //        | RouteGroup(group)         -> failwith "Cannot use view on RouteGroup."
 //        | RequestPipeline(request)  -> failwith "Cannot use view on RequestPipelines."
 
-    let restrict predicate (routeEntry: RouteEntry) =
+    let restrict restriction (routeEntry: RouteEntry) =
+        let matchRestriction = (fun requestContext -> 
+            if restriction requestContext then Matched
+            else NotMatched)
         match routeEntry with
         | Route(route) -> 
-            Route({ route with predicates = predicates route.predicates predicate})
+            Route({ route with restrictions = restrictions route.restrictions matchRestriction})
         | RouteGroup(group) -> 
-            RouteGroup({ group with predicates = predicates group.predicates predicate})
+            RouteGroup({ group with restrictions = restrictions group.restrictions matchRestriction})
         | RequestPipeline(request) ->
-            RequestPipeline({ request with predicates = predicates request.predicates predicate})
+            RequestPipeline({ request with restrictions = restrictions request.restrictions matchRestriction})
                     

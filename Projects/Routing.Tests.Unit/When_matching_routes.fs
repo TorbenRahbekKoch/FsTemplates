@@ -22,7 +22,7 @@ type ``When matching routes``() =
         let expected = defaultBushWithRoot "GET" root
 
         let routes = [ GET "/path" |> view "Text"]
-        let bush = {bush = buildMethodBush routes }
+        let bush = buildMethodBush routes 
         
         let request = Microsoft.Owin.OwinRequest()
         request.Method <- "GET"
@@ -35,7 +35,7 @@ type ``When matching routes``() =
 
         let requestContext = ``from context`` (Microsoft.Owin.OwinContext(request.Environment))
 
-        let matchContext = bush.matchRequest requestContext
+        let matchContext = MethodBush.matchRequest requestContext bush
 
         test <@ Option.isSome matchContext @>
 

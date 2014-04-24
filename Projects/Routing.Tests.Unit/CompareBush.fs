@@ -9,19 +9,17 @@ open Swensen.Unquote
 module BushHelpers = 
     let defaultRouteNode() = 
         { pathItem = createPathItem(""); preAction = None; action= (fun ctx -> ContinueRequest); queries = None;
-          children = Dictionary<string, RouteNode>(); templateChildren = Dictionary<string, RouteNode>(); predicates = None}
+          children = Dictionary<string, RouteNode>(); templateChildren = Dictionary<string, RouteNode>(); restrictions = None}
 
-    let defaultBush() = { bush = Dictionary<HttpMethod,RouteNode>()}
+    let defaultBush() = Dictionary<HttpMethod,RouteNode>()
 
     let defaultBushWithRoot httpMethod root = 
-        let bush = Dictionary<HttpMethod, RouteNode>()
-        bush.Add(httpMethod, root)
+        let bush = [(httpMethod, root)] |> Map.ofSeq
         bush
 
-    let buildMethodBush routeEntry =
-        let bush = { bush = Dictionary<HttpMethod, RouteNode>()}
-        bush.BuildMethodBush routeEntry
-        bush.bush
+    let buildMethodBush routeEntry =        
+        let bush = MethodBush.create routeEntry
+        bush
 
     let createChild path children = 
         let child = { defaultRouteNode() with pathItem = createPathItem(path) }
@@ -33,24 +31,24 @@ module BushHelpers =
         children |> List.iter(fun child -> root.children.Add(child.pathItem.ToString(), child))
         root
 
-    let compareBushes (actual:Dictionary<HttpMethod, RouteNode>) (expected:Dictionary<HttpMethod, RouteNode>) = 
+    let compareBushes (actual:Map<HttpMethod, RouteNode>) (expected:Map<HttpMethod, RouteNode>) = 
         let verify (expr: Quotations.Expr<bool>) actualPathDescription expectedPathDescription =
             if not (expr.Eval()) then
                 printf "Current path: %A - %A" actualPathDescription expectedPathDescription
             test expr 
 
-        let loopDicts (actual:Dictionary<HttpMethod, RouteNode>) (expected:Dictionary<HttpMethod, RouteNode>) actualPathDescription expectedPathDescription action =
+        let loopDicts (actual:Map<HttpMethod, RouteNode>) (expected:Map<HttpMethod, RouteNode>) actualPathDescription expectedPathDescription action =
             for actualChild in actual do
                 let key = actualChild.Key
-                let found, expectedChild = expected.TryGetValue(key)
+                let expectedChild = expected.TryFind(key)
                 let actualPath = actualPathDescription + "/" + key
                 let expectedPath = expectedPathDescription + "/" + key
-                match found with
-                | false -> printf "Missing child at path: actual: %A - expected: %A" actualPath expectedPath
-                           test <@ found @> 
-                | true -> action actualChild.Value expectedChild actualPath expectedPath
+                match expectedChild with
+                | None -> printf "Missing child at path: actual: %A - expected: %A" actualPath expectedPath
+                          test <@ false @> 
+                | Some(expectedChild) -> action actualChild.Value expectedChild actualPath expectedPath
 
-        let rec compareNode1 (actual:Dictionary<HttpMethod, RouteNode>) (expected:Dictionary<HttpMethod, RouteNode>) actualPathDescription expectedPathDescription =
+        let rec compareNode1 (actual:Map<HttpMethod, RouteNode>) (expected:Map<HttpMethod, RouteNode>) actualPathDescription expectedPathDescription =
             verify <@ actual.Count = expected.Count @> actualPathDescription expectedPathDescription
             if (actual.Count > 0) then
                 for actualChild in actual do
@@ -61,7 +59,7 @@ module BushHelpers =
                                 verify <@ actual.preAction.IsSome = expected.preAction.IsSome @> actualPath expectedPath
                                 verify <@ actual.children.Count = expected.children.Count @> actualPath expectedPath
                                 verify <@ actual.templateChildren.Count = expected.templateChildren.Count @> actualPath expectedPath
-                                verify <@ actual.predicates.IsNone = expected.predicates.IsNone @> actualPath expectedPath                                   
+                                verify <@ actual.restrictions.IsNone = expected.restrictions.IsNone @> actualPath expectedPath                                   
                               )
 
         let rec compareNode (actual: RouteNode) (expected: RouteNode) actualPath expectedPath =
@@ -70,9 +68,11 @@ module BushHelpers =
             verify <@ actual.preAction.IsSome = expected.preAction.IsSome @> actualPath expectedPath
             verify <@ actual.children.Count = expected.children.Count @> actualPath expectedPath
             verify <@ actual.templateChildren.Count = expected.templateChildren.Count @> actualPath expectedPath
-            verify <@ actual.predicates.IsNone = expected.predicates.IsNone @> actualPath expectedPath                                   
+            verify <@ actual.restrictions.IsNone = expected.restrictions.IsNone @> actualPath expectedPath                                   
 
-            loopDicts actual.children expected.children actualPath expectedPath compareNode
+            let actualChildren = actual.children.Select(fun keyValue -> (keyValue.Key, keyValue.Value)) |> Map.ofSeq
+            let expectedChildren = expected.children.Select(fun keyValue -> (keyValue.Key, keyValue.Value)) |> Map.ofSeq
+            loopDicts actualChildren expectedChildren actualPath expectedPath compareNode
 
         verify <@ actual.Count = expected.Count @> "/" "/"
         loopDicts actual expected "/" "/" compareNode

@@ -37,30 +37,12 @@ module MyRouter =
             template templates name route
         [
             WEBSOCKET "/api/observers/"
-            |> onText (fun webRequestContext text -> sendText webRequestContext ("Thanks for the text: " + text))
+            |> onText (fun webRequestContext text -> sendText webRequestContext ("Thanks for the text: " + webRequestContext.requestContext.Uri.ToString() + ":" + text))
             |> asRouteEntry
-            //            PREREQUEST |> action (fun request -> ())
-            //            POSTREQUEST |> action (fun request -> ())
             group "/" [
                 GET "/{id1}/{id2}" 
                     |> action (myIdView()) 
                     |> restrict (fun request -> true)
-            //                GET "/test1" 
-            //                    |> view (myView()) 
-            //                    |> restrict (fun request -> true)
-            //                GET "" 
-            //                    |> view "<html><body><h1>Root Page!</h1></body></hmtl>"
-            //                GET "/test2"
-            //                    |> view "<html><body><h1>Hello world</h1></body></html>"
-            //                GET "/test3"
-            //                    |> view "<html><body><h3>Hello world</h3></body></html>"
-            //                GET "/test4" 
-            //                    |> action (myUpdatingView())
-            //                    |> restrict (fun request -> true)
-            //                GET "/test5/"
-            //                    |> view "<html><body><h3>Hello world - test 5</h3></body></html>";
-            //                GET "/test5/test"
-            //                    |> view "<html><body><h3>Hello world - test 5/test</h3></body></html>";
 
                 GET "/websockets/"
                     |> template "websockets"
@@ -72,13 +54,10 @@ module MyRouter =
                 [
                     GET "/todos/"
                         |> action (fun ctx ->
-                            //ctx.AsJson(todos)
-                            //ctx.AsXml(todos)
                             let json = JsonConvert.SerializeObject(todos)
                             ctx.OK json
                             ContinueRequest)
                     POST "/todos/"
-                        //|> restrict (fun ctx -> ctx.context.Request.Headers.ContentLength < 1000)
                         |> restrict (fun ctx -> ctx.context.Request.ContentType.Contains "application/json")
                         |> action (fun ctx ->
                             let textReader = new StreamReader(ctx.context.Request.Body, System.Text.Encoding.UTF8)

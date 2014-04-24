@@ -30,7 +30,7 @@ type ``When matching routes``() =
                    @ [ for x in 1..2500 -> POST paths.[x % 2500] |> view "Text" ]
                    @ [ for x in 1..2500 -> PUT paths.[x %  2500] |> view "Text" ]
                    @ [ for x in 1..2500 -> DELETE paths.[x % 2500] |> view "Text" ]
-        let bush = {bush = buildMethodBush routes }
+        let bush = buildMethodBush routes 
         
         let request = Microsoft.Owin.OwinRequest()
         request.Scheme <- "http"
@@ -71,7 +71,7 @@ type ``When matching routes``() =
         let watch = Stopwatch()
         watch.Start()
         for count in 0..(matchCount-1) do
-            bush.matchRequest (requestContexts.[count]) |> ignore            
+            MethodBush.matchRequest (requestContexts.[count]) bush |> ignore            
         watch.Stop()
         double watch.ElapsedMilliseconds
 

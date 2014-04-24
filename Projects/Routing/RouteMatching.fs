@@ -11,6 +11,15 @@ module RouteMatching =
 
     type Action = RequestContext -> ActionResult
 
+    type RestrictionResult = 
+    | NotMatched
+    | NotMatchedStopRequest
+    | Matched 
+
+    type RestrictStopAction = RequestContext -> unit
+
+    type Restriction = RequestContext -> RestrictionResult
+
     [<NoComparison>]
     [<NoEquality>]
     type MatchContext = {
@@ -52,37 +61,34 @@ module RouteMatching =
             action    : Action
             children  : Dictionary<string, RouteNode>
             templateChildren : Dictionary<string, RouteNode>
-            predicates       : (RequestContext -> bool) list option;
+            restrictions     : Restriction list option;
     }
     with 
-        /// Inserts the given path, actions and predicates
-        member self.insertRoute (pathParts: string list) preAction action predicates : RouteNode =
+        /// Inserts the given path, actions and restrictions
+        member self.insertRoute (pathParts: string list) preAction action restrictions : RouteNode =
             match pathParts with
             | last::[] -> 
-                let leafNode = self.ensureRouteNode last preAction action predicates
+                let leafNode = self.ensureRouteNode last preAction action restrictions
                 leafNode
             | first::rest -> 
                 let node = self.ensureRouteNode first None (fun ctx -> ContinueRequest) None
-                node.insertRoute rest preAction action predicates
+                node.insertRoute rest preAction action restrictions
             // Root path
-            | [] -> self.ensureRouteNode "" preAction action predicates 
-//                match action with // the root only matches if it has an action
-//                | Some(a) -> self.ensureRouteNode "" preAction action predicates
-//                | None -> failwith "Cannot add leaf node without action!"
+            | [] -> self.ensureRouteNode "" preAction action restrictions 
 
-        member private self.ensureRouteNode pathPart preAction action predicates =
+        member private self.ensureRouteNode pathPart preAction action restrictions =
             let found, node = self.children.TryGetValue(pathPart)
             if found then// If it already exists, we should do some tests on whether there is a predicate etc.
                 node     // since we cannot have two different nodes with action/predicate on the same path, there should at least be a predicate on all but one
             else
                 let pathItem = createPathItem(pathPart)
                 let node = { 
-                    pathItem = pathItem; 
-                    queries = None;
-                    action = action; 
-                    preAction = preAction;
-                    predicates = predicates; 
-                    children = Dictionary<string, RouteNode>();
+                    pathItem = pathItem
+                    queries = None
+                    action = action
+                    preAction = preAction
+                    restrictions = restrictions
+                    children = Dictionary<string, RouteNode>()
                     templateChildren = Dictionary<string, RouteNode>()}
                 match pathItem with
                 | Template(s) -> self.templateChildren.Add(pathItem.ToString(), node) 
@@ -152,7 +158,7 @@ module RouteMatching =
             queries = None;
             preAction = None;
             action = (fun ctx -> ContinueRequest); 
-            predicates = None; 
+            restrictions = None; 
             children = Dictionary<string, RouteNode>();
             templateChildren = Dictionary<string, RouteNode>()
         }

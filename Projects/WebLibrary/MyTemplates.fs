@@ -22,13 +22,13 @@ type MyTemplateContainer(physicalTemplateRoot: string) =
     let allTemplates = 
         templates  
             [ fileTextTemplate "todos" 
-                (physicalTemplateRoot + "/todos.html") 
+                (physicalTemplateRoot + "/Content/todos.html") 
                 (actions 
                     [ replace "{CurrentTime}" (fun ctx -> System.DateTime.Now.ToString());] 
                     @ scriptBundles
                     @ styleBundles);
               fileTextTemplate "websockets"
-                (physicalTemplateRoot + "/websockets.html")
+                (physicalTemplateRoot + "/Content/websockets.html")
                 (actions []);
             ]
             |> List.map(fun item -> (item.name, item))

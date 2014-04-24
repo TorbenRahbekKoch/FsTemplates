@@ -7,7 +7,7 @@
     <script>
         function init() {
             //websocket = new WebSocket("ws://softwarepassion.azurewebsites.net/api/observers");
-            websocket = new WebSocket("ws://localhost:49185/api/observers");
+             websocket = new WebSocket("ws://localhost:49185/api/observers");
 
             websocket.onopen = function () { document.getElementById("output").innerHTML += "<p>> CONNECTED</p>"; };
 

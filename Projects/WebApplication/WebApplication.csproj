@@ -62,6 +62,8 @@
   <ItemGroup>
     <Content Include="Content\Styles\base.css" />
     <Content Include="Content\Styles\bg.png" />
+    <Content Include="Content\todos.html" />
+    <Content Include="Content\websockets.html" />
     <Content Include="Scripts\angular-animate.js" />
     <Content Include="Scripts\angular-animate.min.js" />
     <Content Include="Scripts\angular-cookies.js" />
@@ -340,9 +342,7 @@
     <Content Include="Scripts\typings\angularjs\angular-scenario.d.ts" />
     <Content Include="Scripts\typings\angularjs\angular.d.ts" />
     <Content Include="Scripts\typings\jquery\jquery.d.ts" />
-    <Content Include="todos.html" />
     <Content Include="Web.config" />
-    <Content Include="websockets.html" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
