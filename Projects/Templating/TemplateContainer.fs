@@ -7,97 +7,107 @@ open System.Xml.XPath
 open Routing.RequestContext
 open Routing.Routing
 
-//type TemplateDocument =
-//| Text of string
-//| Xml of XDocument    
+module TextTemplate = 
+    //type TemplateDocument =
+    //| Text of string
+    //| Xml of XDocument    
 
-type TextTemplateAction =
-| ReplaceText of searchFor: string * replaceWith: (RequestContext -> string)
-| InsertBefore of searchFor: string * insertText: (RequestContext -> string)
-| InsertAfter of searchFor: string * insertText: (RequestContext -> string)
+    type TextTemplateAction =
+    | ReplaceText of searchFor: string * replaceWith: (RequestContext -> string)
+    | InsertBefore of searchFor: string * insertText: (RequestContext -> string)
+    | InsertAfter of searchFor: string * insertText: (RequestContext -> string)
 
-
-type XmlTemplateActionType = 
-| AppendText of string 
-| AppendChild of string
-| Repeat of string * Dictionary<string, XmlTemplateActionType>
-
-//    type XDocument with
-//        member this.ApplyDataItem (actions: Dictionary<string, XmlTemplateAction>) (itemName: string) (data: Object) =
-//            let action = actions.Item(itemName)
-//            match action with
-//                | AppendChild xpath -> this.XPathSelectElement(xpath).Add(data)
-//                | AppendText xpath -> this.XPathSelectElement(xpath).Add(data)        
+    type String with
+    //        member this.ApplyDataItem (actions: Dictionary<string, TextTemplateAction>) (itemName: string) (data: Object) =
+    //            let action = actions.Item(itemName)
+    //            match action with
+    //                | ReplaceText(text, action) -> this.Replace(text, action().ToString()) //|> ignore
+    //                | InsertBefore text -> this.Insert(this.IndexOf(text), data.ToString()) //|> ignore
+    //                | InsertAfter text -> this.Insert(this.IndexOf(text) + data.ToString().Length, data.ToString()) //|> ignore
+        member this.ApplyDataItem (action: TextTemplateAction) (requestContext: RequestContext) =
+            match action with
+                | ReplaceText(text, action) -> this.Replace(text, action(requestContext).ToString()) //|> ignore
+                | InsertBefore(text, action) -> this.Insert(this.IndexOf(text), action(requestContext).ToString()) //|> ignore
+                | InsertAfter(text, action) -> 
+                    let insertText = action(requestContext).ToString()
+                    this.Insert(this.IndexOf(text) + text.Length, insertText.ToString()) //|> ignore
         
-type String with
-//        member this.ApplyDataItem (actions: Dictionary<string, TextTemplateAction>) (itemName: string) (data: Object) =
-//            let action = actions.Item(itemName)
-//            match action with
-//                | ReplaceText(text, action) -> this.Replace(text, action().ToString()) //|> ignore
-//                | InsertBefore text -> this.Insert(this.IndexOf(text), data.ToString()) //|> ignore
-//                | InsertAfter text -> this.Insert(this.IndexOf(text) + data.ToString().Length, data.ToString()) //|> ignore
-    member this.ApplyDataItem (action: TextTemplateAction) (requestContext: RequestContext) =
-        match action with
-            | ReplaceText(text, action) -> this.Replace(text, action(requestContext).ToString()) //|> ignore
-            | InsertBefore(text, action) -> this.Insert(this.IndexOf(text), action(requestContext).ToString()) //|> ignore
-            | InsertAfter(text, action) -> 
-                let insertText = action(requestContext).ToString()
-                this.Insert(this.IndexOf(text) + text.Length, insertText.ToString()) //|> ignore
+
+    let replace searchFor action =
+        TextTemplateAction.ReplaceText(searchFor, action)
+
+    let insertBefore searchFor action =
+        TextTemplateAction.InsertBefore(searchFor, action)
+
+    let insertAfter searchFor action =
+        TextTemplateAction.InsertAfter(searchFor, action)
+
+    type TextTemplateDocument =
+        {
+            textTemplate : string
+            actions : TextTemplateAction list
+        }
+        member this.Execute requestContext = 
+            this.actions
+            |> List.fold (fun (current: string) action -> (current.ApplyDataItem action requestContext)) this.textTemplate 
+
+        override this.ToString() =
+            this.textTemplate
+
+
+module XmlTemplate = 
+    type XmlTemplateActionType = 
+    | AppendText of string 
+    | AppendChild of string
+    | Repeat of string * Dictionary<string, XmlTemplateActionType>
+
+    //    type XDocument with
+    //        member this.ApplyDataItem (actions: Dictionary<string, XmlTemplateAction>) (itemName: string) (data: Object) =
+    //            let action = actions.Item(itemName)
+    //            match action with
+    //                | AppendChild xpath -> this.XPathSelectElement(xpath).Add(data)
+    //                | AppendText xpath -> this.XPathSelectElement(xpath).Add(data)        
         
 
 //type ITemplate =
 //    abstract ApplyDataItem (itemName: string) data
 
 
-type IActionRule =
-    abstract member Evaluate : unit -> bool
+    type IActionRule =
+        abstract member Evaluate : unit -> bool
 
-type XmlTemplateAction =
-    {
-        name  : string
-        rules : IActionRule list
-        actionType : XmlTemplateActionType
-    }
+    type XmlTemplateAction =
+        {
+            name  : string
+            rules : IActionRule list
+            actionType : XmlTemplateActionType
+        }
 
-type XmlTemplateDocument =
-    {
-        xmlTemplate : XDocument
-        actions : XmlTemplateAction list
-    }
+    type XmlTemplateDocument =
+        {
+            xmlTemplate : XDocument
+            actions : XmlTemplateAction list
+        }
 
-let replace searchFor action =
-    TextTemplateAction.ReplaceText(searchFor, action)
+//    let inlineXmlDoc (doc: string) =
+//        XmlTemplate( {xmlTemplate = XDocument.Load(new StringReader(doc)); actions=[]})
 
-let insertBefore searchFor action =
-    TextTemplateAction.InsertBefore(searchFor, action)
+module TemplateDocument = 
+    open XmlTemplate
+    open TextTemplate
 
-let insertAfter searchFor action =
-    TextTemplateAction.InsertAfter(searchFor, action)
+    type TemplateDocument = 
+        | XmlTemplate of XmlTemplateDocument
+        | TextTemplate of TextTemplateDocument
+        member this.Execute requestContext =
+            match this with
+            | XmlTemplate(doc) -> doc.xmlTemplate.ToString()
+            | TextTemplate(doc) -> doc.Execute requestContext
 
-type TextTemplateDocument =
-    {
-        textTemplate : string
-        actions : TextTemplateAction list
-    }
-    member this.Execute requestContext = 
-        this.actions
-        |> List.fold (fun (current: string) action -> (current.ApplyDataItem action requestContext)) this.textTemplate 
-
-    override this.ToString() =
-        this.textTemplate
-
-type TemplateDocument = 
-    | XmlTemplate of XmlTemplateDocument
-    | TextTemplate of TextTemplateDocument
-    member this.Execute requestContext =
-        match this with
-        | XmlTemplate(doc) -> doc.xmlTemplate.ToString()
-        | TextTemplate(doc) -> doc.Execute requestContext
-
-    override this.ToString() =
-        match this with
-        | XmlTemplate(doc) -> doc.xmlTemplate.ToString()
-        | TextTemplate(doc) -> doc.ToString() 
+        override this.ToString() =
+            match this with
+            | XmlTemplate(doc) -> doc.xmlTemplate.ToString()
+            | TextTemplate(doc) -> doc.ToString() 
 
 //    override this.ToString() = 
 //        match this with
@@ -111,15 +121,25 @@ type TemplateDocument =
 //        this
 
 
-type ITemplateRule =
-    abstract member Evaluate : unit -> bool
+    type ITemplateRule =
+        abstract member Evaluate : unit -> bool
     
-type Template =
-    {
-        name : string
-        document : TemplateDocument
-        rules : ITemplateRule list //??
-    }
+module TemplateName =
+    type TemplateName = TemplateName of string
+
+    let create name = TemplateName(name)
+
+module Template =
+    open TemplateDocument
+    open TemplateName
+
+    type Template =
+        {
+            name : TemplateName
+            document : TemplateDocument
+            rules : ITemplateRule list //??
+        }
+
 //    with 
 //        member this.ApplyDataItem(itemName:string) (data: Object) =
 //            match this.document with
@@ -130,19 +150,10 @@ type Template =
 //        let templateName = templateNameIn
 //        let templateDocument = templateDocumentIn
 
-let inlineXmlDoc (doc: string) =
-    XmlTemplate( {xmlTemplate = XDocument.Load(new StringReader(doc)); actions=[]})
-
-let fileTextTemplate templateName rootRelativeFilename actions =
-    {   name=templateName;
-        document = TextTemplate { textTemplate = File.ReadAllText(rootRelativeFilename); actions=actions }
-        rules = []
-    }
-
-let action name action =
-    let dict = Dictionary<string, XmlTemplateAction>()
-    dict.Add(name, action)
-    dict            
+//    let action name action =
+//        let dict = Dictionary<string, XmlTemplateAction>()
+//        dict.Add(name, action)
+//        dict            
     
 //let actions actionItems list =
 //    for actionItem in list do 
@@ -194,9 +205,9 @@ let toDict<'TActionType> items =
     items |> Seq.iter(fun item -> dict.Add(fst item, snd item)) |> ignore
     dict
 
-let xmlTemplate templateName doc xmlActions =
-    let dictActions = xmlActions |> Seq.map(fun x -> {name = fst x; rules =[]; actionType = snd x}) 
-    dictActions
+//let xmlTemplate templateName doc xmlActions =
+//    let dictActions = xmlActions |> Seq.map(fun x -> {name = fst x; rules =[]; actionType = snd x}) 
+//    dictActions
     //let something = dictActions |> Seq.map|> toDict<XmlTemplateAction>
     //let t = { name = templateName; document = XmlTemplate({ xmlTemplate = doc; actions = dictActions }); rules = []}
     //t
@@ -232,36 +243,93 @@ let xmlTemplate templateName doc xmlActions =
 
 
 
-let templates t = t
-let actions a = a
+// Examples
+//
+//let scriptTag scriptPath = "<script src=\"" + scriptPath + "\"></script>"
+//let script scriptPath = insertBefore "</head>" (fun ctx -> scriptTag scriptPath)
+//let scripts scriptPaths =
+//    let scriptBundle = 
+//        scriptPaths 
+//        |> List.map (fun path -> scriptTag path)
+//        |> List.fold (fun state path -> state + path) ""
+//    insertBefore "</head>" (fun ctx -> scriptBundle)
+//
+//let scriptsBottom scriptPaths =
+//    let scriptBundle = 
+//        scriptPaths 
+//        |> List.map (fun path -> scriptTag path)
+//        |> List.fold (fun state path -> state + path) ""
+//    insertBefore "</body>" (fun ctx -> scriptBundle)
+//
+//
+//
+//
 
-let scriptTag scriptPath = "<script src=\"" + scriptPath + "\"></script>"
-let script scriptPath = insertBefore "</head>" (fun ctx -> scriptTag scriptPath)
-let scripts scriptPaths =
-    let scriptBundle = 
-        scriptPaths 
-        |> List.map (fun path -> scriptTag path)
-        |> List.fold (fun state path -> state + path) ""
-    insertBefore "</head>" (fun ctx -> scriptBundle)
+[<AutoOpen>]
+module TemplateContainer = 
+    open Routing
+    open Template
+    open TemplateDocument
+    open TextTemplate
 
-let scriptsBottom scriptPaths =
-    let scriptBundle = 
-        scriptPaths 
-        |> List.map (fun path -> scriptTag path)
-        |> List.fold (fun state path -> state + path) ""
-    insertBefore "</body>" (fun ctx -> scriptBundle)
+    [<AbstractClass>]
+    type TemplateContainer(physicalTemplateRoot: string, templates: Template list) =
+        let templates = templates
+                        |> List.map(fun item -> (item.name, item))
+                        |> dict
 
-let styleTag stylePath = "<link rel=\"stylesheet\" href=\"" + stylePath + "\">"
+        let physicalTemplateRoot = physicalTemplateRoot
 
-let styles stylePaths = 
-    let styleBundle =
-        stylePaths 
-        |> List.map(fun path -> styleTag path)
-        |> List.fold(fun state path -> state+path) ""
-    insertBefore "</head>" (fun ctx -> styleBundle)
+        member self.ExecuteTemplate (template: Template) (requestContext: RequestContext) =
+            template.document.Execute requestContext
+
+        member self.Item name =
+            templates.Item(name)
 
 
 
-[<AbstractClass>]
-type TemplateContainer(physicalTemplateRoot: string) =
-    let physicalTemplateRoot = physicalTemplateRoot
+    let fileTextTemplate templateName rootRelativeFilename actions =
+        {   name= TemplateName.create templateName;
+            document = TextTemplate { textTemplate = File.ReadAllText(rootRelativeFilename); actions=actions }
+            rules = []
+        }
+
+    let actions (actions: TextTemplateAction list) = actions
+
+    let scriptTag scriptPath = "<script src=\"" + scriptPath + "\"></script>"
+    let script scriptPath = insertBefore "</head>" (fun ctx -> scriptTag scriptPath)
+
+    let scripts scriptPaths =
+        let scriptBundle = 
+            scriptPaths 
+            |> List.map (fun path -> scriptTag path)
+            |> List.fold (fun state path -> state + path) ""
+        insertBefore "</head>" (fun ctx -> scriptBundle)
+
+    let scriptsBottom scriptPaths =
+        let scriptBundle = 
+            scriptPaths 
+            |> List.map (fun path -> scriptTag path)
+            |> List.fold (fun state path -> state + path) ""
+        insertBefore "</body>" (fun ctx -> scriptBundle)
+
+    let styleTag stylePath = "<link rel=\"stylesheet\" href=\"" + stylePath + "\">"
+
+    let styles stylePaths = 
+        let styleBundle =
+            stylePaths 
+            |> List.map(fun path -> styleTag path)
+            |> List.fold(fun state path -> state+path) ""
+        insertBefore "</head>" (fun ctx -> styleBundle)
+
+    let templateAction (container: TemplateContainer) (template:Template) =
+        fun (r: RequestContext) ->        
+            r.context.Response.Write(container.ExecuteTemplate template r)
+            ContinueRequest
+
+    let template (container: TemplateContainer) (name: string) (route: RouteEntry) =
+        match route with
+        | Route(route)          -> Route {route with action = templateAction container (container.Item(TemplateName.create name))}
+        | RouteGroup(group)     -> failwith ("Cannot use template on RouteGroup: " + name)
+        | RequestPipeline(_)    -> failwith ("Cannot use template on RequestPipeline: " + name)
+    

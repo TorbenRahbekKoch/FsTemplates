@@ -11,6 +11,8 @@ open WebSocket
 open WebSocketRoute
 
 module MyRouter =
+    open Templating
+
     type TodoItem = {
         title : string;
         completed : bool;
@@ -73,7 +75,7 @@ module MyRouter =
         let todos = List<TodoItem>()
         member self.Todos with get() = todos
         member self.ApplicationRootDirectory with get() = applicationRootDirectory
-        member self.Templates = MyTemplateContainer(applicationRootDirectory)
+        member self.Templates = MyTemplateContainer(TemplateState applicationRootDirectory)
         member self.Routes with get() = myRoutes self.Templates self.Todos
 
     type MyRouter(routerState: MyRouterState) =
