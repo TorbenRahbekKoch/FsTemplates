@@ -1,3 +1,4 @@
+/// <reference path="websocket.ts" />
 module todos {
     'use strict';
 
@@ -39,6 +40,19 @@ module todos {
             if ($location.path() === '')
                 $location.path('/');
             $scope.location = $location;
+
+			//var Socket: typeof WebSocket = WebSocket || MozWebSocket;
+
+			var websocket = new WebSocket('ws://localhost:49185/api/observers');
+            websocket.onmessage =
+            messageEvent => {                    
+		            var todo = JSON.parse(messageEvent.data);
+                    this.todos.push(todo);
+                $scope.$apply();
+            };
+            
+	        //
+
         }
 
         onPath(path: string) {
@@ -62,7 +76,7 @@ module todos {
 
             this.todoService.add(new TodoItem(newTodo, false));
 
-            this.todos.push(new TodoItem(newTodo, false));
+            //this.todos.push(new TodoItem(newTodo, false));
             this.$scope.newTodo = '';
         }
 

@@ -7,6 +7,7 @@ open Swensen.Unquote
 
 // Various helper methods for making the tests more readable
 module BushHelpers = 
+    open HttpMethod
     let defaultRouteNode() = 
         { pathItem = createPathItem(""); preAction = None; action= (fun ctx -> ContinueRequest); queries = None;
           children = Dictionary<string, RouteNode>(); templateChildren = Dictionary<string, RouteNode>(); restrictions = None}
@@ -41,8 +42,8 @@ module BushHelpers =
             for actualChild in actual do
                 let key = actualChild.Key
                 let expectedChild = expected.TryFind(key)
-                let actualPath = actualPathDescription + "/" + key
-                let expectedPath = expectedPathDescription + "/" + key
+                let actualPath = actualPathDescription + "/" + key.ToString()
+                let expectedPath = expectedPathDescription + "/" + key.ToString()
                 match expectedChild with
                 | None -> printf "Missing child at path: actual: %A - expected: %A" actualPath expectedPath
                           test <@ false @> 

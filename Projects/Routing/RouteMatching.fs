@@ -12,9 +12,9 @@ module RouteMatching =
     type Action = RequestContext -> ActionResult
 
     type RestrictionResult = 
-    | NotMatched
-    | NotMatchedStopRequest
-    | Matched 
+    | RestrictedAndHandled
+    | RestrictedAndNotHandled
+    | NotRestricted 
 
     type RestrictStopAction = RequestContext -> unit
 
@@ -22,12 +22,26 @@ module RouteMatching =
 
     [<NoComparison>]
     [<NoEquality>]
-    type MatchContext = {
+    type SuccessfulMatchContext = {
         requestContext  : RequestContext;
         preAction       : Action option;
         action          : Action;
         templateValues  : Dictionary<string, string>;
     }
+
+    [<NoComparison>]
+    [<NoEquality>]
+    type RestrictedMatchContext = {
+        requestContext : RequestContext
+        handled        : bool
+    }
+
+    [<NoComparison>]
+    [<NoEquality>]
+    type MatchContext =
+    | SuccessfulMatch of SuccessfulMatchContext
+    | RestrictedMatch of RestrictedMatchContext
+    | FailedMatch
 
     /// Path Items (between /) can be either a template ({id}) or just a simple path part
     type PathItem =

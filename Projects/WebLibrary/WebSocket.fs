@@ -32,18 +32,36 @@ module WebSocketContext =
 
     type CloseStatus = CloseStatus of int
 
+    type MessageType =
+    | ContinuationFrame = 0
+    | TextFrame = 1
+    | BinaryFrame = 2
+    | ConnectionClose = 8
+    | Ping = 9
+    | Pong = 10
+
     type WebSocketMessage = 
+    | Stop
     | Binary of byte[]
     | Text of string
 
-    type WebSocketContext = {
-        cancellation : CancellationToken
-        receive : ArraySegment<byte> -> CancellationToken -> Task<Tuple<int, bool, int>>
-        send    : ArraySegment<byte> -> int -> bool -> CancellationToken -> Task
-        close   : int -> string -> CancellationToken -> Task
-        requestContext : RequestContext
-        processor      : MailboxProcessor<WebSocketMessage>
-    }
+    type Receive = ArraySegment<byte> -> CancellationToken -> Task<Tuple<int, bool, int>>
+    type Send = ArraySegment<byte> -> int -> bool -> CancellationToken -> Task
+    type Close = int -> string -> CancellationToken -> Task
+    
+
+    type WebSocketContext(cancellation: CancellationToken, 
+                          receive: Receive, 
+                          send: Send, 
+                          close: Close, 
+                          requestContext: RequestContext, 
+                          sendMessageProcessor: MailboxProcessor<WebSocketMessage>) = 
+        member self.Cancellation  with get() = cancellation
+        member self.Receive with get() = receive
+        member self.Send with get() = send
+        member self.Close with get() = close
+        member self.RequestContext with get() = requestContext
+        member self.SendMessageProcessor with get() = sendMessageProcessor
 
     let create (requestContext: RequestContext) (simpleContext: IDictionary<string, Object>) =
         let context = requestContext.context
@@ -64,51 +82,38 @@ module WebSocketContext =
             let rec loop() =
                 async { 
                     let! message = inbox.Receive()
-                    let buffer = match message with
-                                 | Binary(data) -> new ArraySegment<byte>(data)
-                                 | Text(data) -> new ArraySegment<byte>(System.Text.Encoding.UTF8.GetBytes(data))
-                    let task = send buffer 1 true cancellation 
-                    do! Async.AwaitIAsyncResult(task) |> Async.Ignore
-                    return! loop()// Async.AwaitIAsyncResult(loop()) |> Async.Ignore
+                    if message = Stop then
+                        ()
+                    else 
+                        let buffer = match message with
+                                     | Binary(data) -> new ArraySegment<byte>(data)
+                                     | Text(data)   -> new ArraySegment<byte>(System.Text.Encoding.UTF8.GetBytes(data))
+                                     | Stop         -> failwith "Unexpected Stop message received."
+                        let task = send buffer 1 true cancellation 
+                        do! Async.AwaitIAsyncResult(task) |> Async.Ignore
+                        return! loop()// Async.AwaitIAsyncResult(loop()) |> Async.Ignore
                 }
             loop())
         processor.Start()
 
-        {   receive = receive
-            send = send
-            close = close
-            requestContext = requestContext
-            cancellation = cancellation
-            processor = processor 
-        }
+        WebSocketContext(cancellation, receive, send, close, requestContext, processor)
 
 module WebSocketRoute = 
     open Routing
     open WebSocketContext
 
-    type WebSocketRoute =  {        
-        onPing      : (WebSocketContext -> unit) option
-        onPong      : (WebSocketContext -> unit) option
-        onBinary    : (WebSocketContext -> byte[] -> unit) option
-        onText      : (WebSocketContext -> string -> unit) option
-        onClose     : (CloseStatus -> unit) option
-        path        : string
-        routeEntry  : RouteEntry
-    }
+    type WebSocketRoute(path: string) =
+        member self.Path with get() = path
+        member val OnConnect : (WebSocketContext -> unit) option = None with get, set
+        member val OnPing    : (WebSocketContext -> unit) option = None with get, set
+        member val OnPong    : (WebSocketContext -> unit) option = None with get, set
+        member val OnBinary  : (WebSocketContext -> byte[] -> unit) option = None with get, set
+        member val OnText    : (WebSocketContext -> string -> unit) option = None with get, set
+        member val OnClose   : (WebSocketContext -> unit) option = None with get, set
+        member val RouteEntry: RouteEntry option = None with get, set
 
-    let asRouteEntry wsr =
-        wsr.routeEntry
-
-    let createDefault =
-        {
-            onPing = None
-            onPong = None
-            onText = None
-            onBinary = None
-            onClose = None
-            path = ""
-            routeEntry = Route defaultRoute
-        }
+    let asRouteEntry (webSocketRoute: WebSocketRoute) =
+        webSocketRoute.RouteEntry.Value
 
 module WebSocket =
     open System
@@ -146,9 +151,31 @@ module WebSocket =
             (r.hasHeader ``Sec-WebSocket-Key``)        
         isValidWebSocketRequest
         
+    let callOnConnect (webSocketRoute: WebSocketRoute) (webSocketContext: WebSocketContext)= 
+        if webSocketRoute.OnConnect.IsSome then
+            try
+                webSocketRoute.OnConnect.Value webSocketContext
+            with
+                _ -> ()
 
-    let handleWebSocket webSocketRoute (requestContext: RequestContext) (webSocketContext: WebSocketContext) = 
+    let callOnText (webSocketRoute: WebSocketRoute) (webSocketContext: WebSocketContext) text = 
+        if (webSocketRoute.OnText.IsSome) then
+            try
+                webSocketRoute.OnText.Value webSocketContext text
+            with
+                _ -> ()
+
+    let callOnClose (webSocketRoute: WebSocketRoute) (webSocketContext: WebSocketContext) =
+        if (webSocketRoute.OnClose.IsSome) then
+            try
+                webSocketRoute.OnClose.Value webSocketContext 
+            with
+                _ -> ()
+        
+    let handleWebSocket (webSocketRoute: WebSocketRoute) (requestContext: RequestContext) (webSocketContext: WebSocketContext) = 
         let context = requestContext.context
+        
+        callOnConnect webSocketRoute webSocketContext
 
         let buffer = Array.zeroCreate 1024
         let action = 
@@ -156,28 +183,26 @@ module WebSocket =
                 let rec loop() = async {
                     let found, status = context.Environment.TryGetValue("websocket.ClientCloseStatus") 
                     if not found || (status :?> int) = 0 then
-                        let! received = Async.AwaitTask (webSocketContext.receive (ArraySegment<byte>(buffer)) webSocketContext.cancellation)
-                        let messageType, endOfMessage, count = received.Item1, received.Item2, received.Item3       
-                                        
-                        if messageType = 1 && webSocketRoute.onText.IsSome then
+                        let! received = Async.AwaitTask (webSocketContext.Receive (ArraySegment<byte>(buffer)) webSocketContext.Cancellation)
+                        let messageType, endOfMessage, count = enum<MessageType>(received.Item1), received.Item2, received.Item3       
+                           
+                        if messageType = MessageType.TextFrame && webSocketRoute.OnText.IsSome then
                             // Consider what do do when count > size of the buffer
                             let text = System.Text.Encoding.UTF8.GetString(buffer, 0, count)
-
-                            try
-                                webSocketRoute.onText.Value webSocketContext text
-                            with
-                            | ex -> ()
+                            callOnText webSocketRoute webSocketContext text
                         
-                        ()
-                        // main
-                    
-                    return! loop()
+                        if messageType = MessageType.ConnectionClose then
+                            webSocketContext.SendMessageProcessor.Post Stop
+                            ()
+                    else
+                        return! loop()
                 }
                 do! loop()
 
                 let closeStatus = context.Get<int>("websocket.ClientCloseStatus")
                 let closeDescription = context.Get<string>("websocket.ClientCloseDescription")
-                do! Async.AwaitTask(webSocketContext.close closeStatus closeDescription webSocketContext.cancellation :?> Task<unit>) 
+                callOnClose webSocketRoute webSocketContext
+                //do! Async.AwaitTask(webSocketContext.Close closeStatus closeDescription webSocketContext.Cancellation :?> Task<unit>) 
                 ()
             }
         
@@ -186,7 +211,7 @@ module WebSocket =
         task
 
     let sendText (webSocketContext: WebSocketContext) (text: string) =
-        webSocketContext.processor.Post(Text text)
+        webSocketContext.SendMessageProcessor.Post(Text text)
 
     let acceptWebSocket webSocketRoute (requestContext: RequestContext) =
         let context = requestContext.context
@@ -205,20 +230,25 @@ module WebSocket =
                         ContinueRequest)
         route
 
-    let WEBSOCKET path = 
-        let webSocketRoute = { WebSocketRoute.createDefault with path = path }
-        let route = webSocketRouteAction webSocketRoute path
-        
-        // We loose the above captured webSocketRoute already here
-        { webSocketRoute with routeEntry = route }
 
-    let onText action webSocketRoute  =
-        // We also loose the captured webSocketRoute here
-        let onTextRoute = { webSocketRoute with onText = Some action }
-        let route = webSocketRouteAction onTextRoute (webSocketRoute.path)
-        { webSocketRoute with routeEntry = route }
+    let WEBSOCKET path = 
+        let webSocketRoute = WebSocketRoute(path)
+        let route = webSocketRouteAction webSocketRoute path
+        webSocketRoute.RouteEntry <- Some(route)
+        webSocketRoute
+       
+    let onConnect action (webSocketRoute: WebSocketRoute) =
+        webSocketRoute.OnConnect <- Some(action)
+        webSocketRoute
         
-    let onBinary action webSocketRoute =
-        let onBinaryRoute = { webSocketRoute with onBinary = Some action}
-        let route = webSocketRouteAction onBinaryRoute (webSocketRoute.path)
-        { webSocketRoute with routeEntry = route }
+    let onDisconnect action (webSocketRoute: WebSocketRoute) =
+        webSocketRoute.OnClose <- Some(action)
+        webSocketRoute
+        
+    let onText action (webSocketRoute: WebSocketRoute) =
+        webSocketRoute.OnText <- Some(action)
+        webSocketRoute
+        
+    let onBinary action (webSocketRoute: WebSocketRoute) =
+        webSocketRoute.OnBinary <- Some(action)
+        webSocketRoute

@@ -9,11 +9,12 @@ type TemplateState(physicalTemplateRoot: string) =
     let angularJsBundle = scriptsBottom
                            [ "/Scripts/angular.js" ]
     let todoAppBundle = scriptsBottom
-                         [ "/Scripts/Todos/TodoService.js"
-                           "/Scripts/Todos/ITodoScope.js";
-                           "/Scripts/Todos/TodoItem.js";
-                           "/Scripts/Todos/TodoController.js";                           
-                           "/Scripts/Todos/App.js"; ]
+                         [ "/Scripts/Todos/WebSocket.js"
+                           "/Scripts/Todos/TodoService.js"
+                           "/Scripts/Todos/ITodoScope.js"
+                           "/Scripts/Todos/TodoItem.js"
+                           "/Scripts/Todos/TodoController.js"
+                           "/Scripts/Todos/App.js" ]
     let scriptBundles = [angularJsBundle;todoAppBundle; ]
 
     let styleBundles = [styles ["/Content/Styles/base.css"]]

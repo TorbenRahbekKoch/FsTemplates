@@ -1,5 +1,7 @@
 /Build/Debug
 /Build/Release
+Build
 /*.user
 /*.suo
 obj
+bin

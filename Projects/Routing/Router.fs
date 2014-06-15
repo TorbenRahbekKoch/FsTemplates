@@ -10,10 +10,70 @@ open Microsoft.Owin
 open Routing
 open RequestContext
 
+//[<AutoOpen>]
+module HttpMethod = 
+    type HttpMethod = 
+        | DELETE
+        | GET
+        | HEAD
+        | OPTIONS
+        | PATCH
+        | POST
+        | PUT
+
+    let create (httpMethod: string) =
+        match httpMethod.ToUpperInvariant() with
+        | "DELETE"  -> DELETE
+        | "GET"     -> GET
+        | "HEAD"    -> HEAD
+        | "OPTIONS" -> OPTIONS
+        | "PATCH"   -> PATCH
+        | "POST"    -> POST
+        | "PUT"     -> PUT
+        | _ -> failwith ("Unknown HttpMethod: " + httpMethod)
+        
+    let value httpMethod =
+        match httpMethod with
+        | DELETE  -> "DELETE"
+        | GET     -> "GET"
+        | HEAD    -> "HEAD"
+        | OPTIONS -> "OPTIONS" 
+        | PATCH   -> "PATCH"
+        | POST    -> "POST"
+        | PUT     -> "PUT"  
+        
+[<AutoOpen>]
+module RoutingPath = 
+    type RoutingPath = | RoutingPath of string
+               
+    let create (route: string) =
+        let success, uri = System.Uri.TryCreate(route, UriKind.Relative)
+        if not success then failwith ("Incorrectly formatted route: " + route)
+        else RoutingPath route
+
+    let value (RoutingPath value) =
+        value
+
+    let add (left: RoutingPath) (right: RoutingPath) =
+        create (value left + value right);
+
+    let inline (/+) ((left: RoutingPath), (right: RoutingPath)) =
+            add left right
+
+    type Q = | Q of string
+        with static member (+) (Q(s1), Q(s2)) = Q(s1)
+
+//    let inline add ((left: Q), (right: Q)) =
+//        left.ToString()// + right.ToString()
+
+    let r1 = create "/test"
+    let r2 = create "/test"
+
+    //let r3 = (+) (r1, r2)
+    //let r4 = r1 /+ r2
+
 [<AutoOpen>]
 module Routing =
-    type HttpMethod = string
-
     /// Basic splitting of a path and  query (latter not implemented yet)
     let splitRoutePath (path:string) =       
         let pathItems = path.Split([|'/'|], StringSplitOptions.RemoveEmptyEntries)
@@ -34,9 +94,9 @@ module Routing =
     [<NoEquality>]
     type Route = {
         /// Http Method (GET/PUT/etc) for this route
-        httpMethod: string
+        httpMethod: HttpMethod.HttpMethod
         /// The full, host-relative path, eventually with query string
-        route : string
+        route : RoutingPath
         preAction : Action option
         action    : Action
         restrictions : Restriction list option
@@ -54,10 +114,10 @@ module Routing =
     and [<NoComparison>]
         [<NoEquality>]
     RouteGroup = {
-        rootRoute : string;
-        routes : RouteEntry list;
-        action  : Action option;
-        queries : Dictionary<string, string> option;
+        rootRoute : RoutingPath
+        routes : RouteEntry list
+        action  : Action option
+        queries : Dictionary<string, string> option
         restrictions : Restriction list option
     }
     and [<NoComparison>]
@@ -67,11 +127,12 @@ module Routing =
         | RouteGroup of RouteGroup   
         | RequestPipeline of RequestPipeline
     
-    let defaultRoute = { httpMethod = "GET"; route = String.Empty; preAction = None; action = (fun ctx -> ContinueRequest); restrictions = None}
-    let defaultRouteGroup = { rootRoute = String.Empty; routes = []; restrictions = None; action = None; queries = None}
+    let defaultRoute = { httpMethod = HttpMethod.GET; route = RoutingPath.create "/"; preAction = None; action = (fun ctx -> ContinueRequest); restrictions = None}
+    let defaultRouteGroup = { rootRoute = RoutingPath.create "/"; routes = []; restrictions = None; action = None; queries = None}
     let defaultRequestPipeline = { requestType = Pre; action = (fun ctx -> ContinueRequest); restrictions = None }
 
 module MethodBush = 
+    open HttpMethod
     // TODO: Implement a consistency check, which can check for e.g. duplicate template values in a path
 //    [<NoComparison>]
 //    [<NoEquality>]
@@ -97,16 +158,16 @@ module MethodBush =
 //                let pathParts, queryPart = splitRoutePath route.route
 //                self.insertBranchAndLeaf route.httpMethod pathParts route.preAction route.action route.predicates |> ignore) 
 //
-    let rootNode httpMethod (bush: Map<HttpMethod, RouteNode>) =
+    let rootNode httpMethod (bush: Map<HttpMethod.HttpMethod, RouteNode>) =
         bush.[httpMethod]
         
-    let matchRequest (requestContext: RequestContext) (bush: Map<HttpMethod, RouteNode>)=
+    let matchRequest (requestContext: RequestContext) (bush: Map<HttpMethod.HttpMethod, RouteNode>)=
         let absoluteUriPath = requestContext.Uri.AbsolutePath
-        let rootNode = rootNode requestContext.Method bush
+        let rootNode = rootNode (HttpMethod.create requestContext.Method) bush
         let pathParts, query = splitRoutePath absoluteUriPath
         let node = rootNode.findMatchingLeafNode pathParts
         match node with
-        | None -> None
+        | None -> FailedMatch
         | Some(node) ->
             let matchContext = { 
                 requestContext = requestContext; 
@@ -114,21 +175,18 @@ module MethodBush =
                 action = node.matchedRoute.action;
                 templateValues = node.templateValues }
             match node.matchedRoute.restrictions with
-            | None -> Some(matchContext)
+            | None -> SuccessfulMatch matchContext
             | Some(restrictions) -> 
                 let restrictResult = restrictions |> List.fold(fun state item -> 
                         match state with
-                        | Matched    -> item requestContext
-                        | NotMatched -> NotMatched
-                        | NotMatchedStopRequest -> NotMatchedStopRequest) Matched 
+                        | NotRestricted           -> item requestContext
+                        | RestrictedAndHandled    -> RestrictedAndHandled
+                        | RestrictedAndNotHandled -> RestrictedAndNotHandled) NotRestricted
+
                 match restrictResult with
-                | Matched    -> Some(matchContext)
-                | NotMatched -> None
-                | NotMatchedStopRequest -> None
-//                if List.forall (fun restriction -> (restriction requestContext) = Matched) restrictions then 
-//                    Some(matchContext)
-//                else 
-//                    None
+                | NotRestricted           -> SuccessfulMatch matchContext
+                | RestrictedAndHandled    -> RestrictedMatch { requestContext = requestContext; handled = true }
+                | RestrictedAndNotHandled -> RestrictedMatch { requestContext = requestContext; handled = false }
 
     let ensureHttpMethod (bush: Dictionary<HttpMethod, RouteNode>) httpMethod preAction action restrictions =
         let found, branch = bush.TryGetValue(httpMethod)
@@ -158,14 +216,16 @@ module MethodBush =
             |> List.collect(fun routeEntry -> 
                 match routeEntry with
                 | Route(route)              -> 
-                    [ {route with route = parentRouteGroup.rootRoute + route.route; preAction = route.preAction; action=route.action} ]
+                    
+                    let t = parentRouteGroup.rootRoute
+                    [ {route with route = (RoutingPath.(/+)(t, route.route)); preAction = route.preAction; action=route.action} ]
                 | RouteGroup(routeGroup)    -> buildBush routeGroup routeGroup.routes
                 | RequestPipeline(pipeline) -> [])
-            |> List.sortBy(fun route -> route.route)
+            |> List.sortBy(fun route -> RoutingPath.value route.route)
 
         buildBush defaultRouteGroup routeEntries
         |> List.iter (fun route ->
-            let pathParts, queryPart = splitRoutePath route.route
+            let pathParts, queryPart = splitRoutePath (RoutingPath.value route.route)
             insertBranchAndLeaf bush route.httpMethod pathParts route.preAction route.action route.restrictions |> ignore) 
         [for keyValue in bush -> (keyValue.Key, keyValue.Value)]
         |> Map.ofList
@@ -217,8 +277,6 @@ module Router =
     type Router(routeEntries) = //  (methodBush: Map<HttpMethod, RouteNode>, requestPipeline: Map<RequestPipelineType, RequestPipeline list>) = 
         let methodBush = MethodBush.create routeEntries
         let requestPipeline = RouteBuilding.buildRequestPipeline routeEntries
-//        member self.MethodBush with get() = methodBush;
-//        member self.RequestPipeline with get() = requestPipeline
 
         member self.ExecuteRequestAsync (context: IOwinContext): Task =
             let r = context.Request
@@ -231,28 +289,31 @@ module Router =
             | ContinueRequest -> 
                 let matchContext = MethodBush.matchRequest requestContext methodBush
 
-                let executeActions (matchContext: MatchContext) =
-                    let getExecutableAction action =
-                        match action with
-                        | None          -> (fun requestContext -> ContinueRequest)
-                        | Some(action)  -> (fun requestContext -> action requestContext)
-
-                    let preAction = getExecutableAction matchContext.preAction
-                    let requestContext = { matchContext.requestContext with templateValues = matchContext.templateValues }                
-                
-                    Async.StartAsTask(
-                        async {
-                            let preActionResult = preAction requestContext
-                            match preActionResult with
-                            | StopRequest -> ()
-                            | ContinueRequest -> matchContext.action requestContext |> ignore                    
-                        },
-                        TaskCreationOptions.None,
-                        requestContext.request.CallCancelled) :> Task
-
                 match matchContext with
-                | None -> self.NotFound context
-                | Some(m) -> executeActions m
+                | FailedMatch               -> self.NotFound context
+                | RestrictedMatch context   -> Task.FromResult(0) :> Task
+                | SuccessfulMatch matchContext   ->
+
+                    let executeActions (matchContext: SuccessfulMatchContext) =
+                        let getExecutableAction action =
+                            match action with
+                            | None          -> (fun requestContext -> ContinueRequest)
+                            | Some(action)  -> (fun requestContext -> action requestContext)
+
+                        let preAction = getExecutableAction matchContext.preAction
+                        let requestContext = { matchContext.requestContext with templateValues = matchContext.templateValues }                
+                
+                        Async.StartAsTask(
+                            async {
+                                let preActionResult = preAction requestContext
+                                match preActionResult with
+                                | StopRequest -> ()
+                                | ContinueRequest -> matchContext.action requestContext |> ignore                    
+                            },
+                            TaskCreationOptions.None,
+                            requestContext.request.CallCancelled) :> Task
+
+                    executeActions matchContext
 
         member private self.executeRequestPipeline requestPipelineType (requestContext: RequestContext) =
             let pipelines = requestPipeline.TryFind(requestPipelineType)
@@ -265,14 +326,14 @@ module Router =
                     | Some(restrictions) -> 
                         let restrictResult = restrictions |> List.fold(fun state item -> 
                                 match state with
-                                | Matched    -> item requestContext
-                                | NotMatched -> NotMatched
-                                | NotMatchedStopRequest -> NotMatchedStopRequest) Matched 
+                                | NotRestricted        -> item requestContext
+                                | RestrictedAndHandled -> RestrictedAndHandled
+                                | RestrictedAndNotHandled -> RestrictedAndNotHandled) NotRestricted 
 
                         match restrictResult with
-                        | Matched    -> action requestContext
-                        | NotMatched -> ContinueRequest
-                        | NotMatchedStopRequest -> StopRequest
+                        | NotRestricted    -> action requestContext
+                        | RestrictedAndHandled -> StopRequest
+                        | RestrictedAndNotHandled -> ContinueRequest
 
                 let actionResult = pipelines |> List.tryPick(fun pipeline -> 
                         match executeConditional pipeline.action pipeline.restrictions with
@@ -336,19 +397,19 @@ module Router =
         routes
 
     let group path routes =
-        RouteGroup { defaultRouteGroup with rootRoute = path; routes = routes }
+        RouteGroup { defaultRouteGroup with rootRoute = RoutingPath.create path; routes = routes }
         
     let GET path =
-        Route { defaultRoute with httpMethod = "GET"; route = path }
+        Route { defaultRoute with httpMethod = HttpMethod.GET; route = RoutingPath.create path }
 
     let POST path =
-        Route { defaultRoute with httpMethod = "POST"; route = path }
+        Route { defaultRoute with httpMethod = HttpMethod.POST; route = RoutingPath.create path }
 
     let PUT path =
-        Route { defaultRoute with httpMethod = "PUT"; route = path }
+        Route { defaultRoute with httpMethod = HttpMethod.PUT; route = RoutingPath.create path }
 
     let DELETE path =
-        Route { defaultRoute with httpMethod = "DELETE"; route = path }
+        Route { defaultRoute with httpMethod = HttpMethod.DELETE; route = RoutingPath.create path }
 
     let PREREQUEST =
         RequestPipeline { defaultRequestPipeline with requestType = Pre}
@@ -371,8 +432,8 @@ module Router =
 
     let restrict restriction (routeEntry: RouteEntry) =
         let matchRestriction = (fun requestContext -> 
-            if restriction requestContext then Matched
-            else NotMatched)
+            if restriction requestContext then NotRestricted
+            else RestrictedAndNotHandled)
         match routeEntry with
         | Route(route) -> 
             Route({ route with restrictions = restrictions route.restrictions matchRestriction})
@@ -380,4 +441,12 @@ module Router =
             RouteGroup({ group with restrictions = restrictions group.restrictions matchRestriction})
         | RequestPipeline(request) ->
             RequestPipeline({ request with restrictions = restrictions request.restrictions matchRestriction})
-                    
+
+    let matchRestrict matchRestriction (routeEntry: RouteEntry) = 
+        match routeEntry with
+        | Route(route) -> 
+            Route({ route with restrictions = restrictions route.restrictions matchRestriction})
+        | RouteGroup(group) -> 
+            RouteGroup({ group with restrictions = restrictions group.restrictions matchRestriction})
+        | RequestPipeline(request) ->
+            RequestPipeline({ request with restrictions = restrictions request.restrictions matchRestriction})

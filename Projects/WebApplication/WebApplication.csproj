@@ -20,7 +20,7 @@
     <IISExpressAnonymousAuthentication />
     <IISExpressWindowsAuthentication />
     <IISExpressUseClassicPipelineMode />
-    <TypeScriptToolsVersion>0.9</TypeScriptToolsVersion>
+    <TypeScriptToolsVersion>1.0</TypeScriptToolsVersion>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -332,6 +332,7 @@
     <Content Include="Scripts\Todos\ITodoScope.js" />
     <Content Include="Scripts\Todos\TodoController.js" />
     <Content Include="Scripts\Todos\TodoItem.js" />
+    <TypeScriptCompile Include="Scripts\Todos\WebSocket.ts" />
     <Content Include="Scripts\Todos\TodoService.js" />
     <Content Include="Scripts\typings\angularjs\angular-animate.d.ts" />
     <Content Include="Scripts\typings\angularjs\angular-cookies.d.ts" />

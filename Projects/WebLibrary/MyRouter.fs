@@ -8,6 +8,7 @@ open Router
 open Newtonsoft.Json
 open MyTemplates
 open WebSocket
+open WebSocketContext
 open WebSocketRoute
 
 module MyRouter =
@@ -34,13 +35,16 @@ module MyRouter =
             ContinueRequest
 
 
-    let myRoutes templates (todos: List<TodoItem>) =  
+    let myRoutes templates (todos: List<TodoItem>) (webSockets: HashSet<WebSocketContext>) =  
         let template name route =
             template templates name route
         [
             WEBSOCKET "/api/observers/"
-            |> onText (fun webRequestContext text -> sendText webRequestContext ("Thanks for the text: " + webRequestContext.requestContext.Uri.ToString() + ":" + text))
+            |> onText (fun webSocketContext text -> sendText webSocketContext ("Thanks for the text: " + webSocketContext.RequestContext.Uri.ToString() + ":" + text))
+            |> onConnect (fun webSocketContext -> webSockets.Add(webSocketContext) |> ignore)
+            |> onDisconnect (fun webSocketContext -> webSockets.Remove(webSocketContext) |> ignore)
             |> asRouteEntry
+
             group "/" [
                 GET "/{id1}/{id2}" 
                     |> action (myIdView()) 
@@ -50,6 +54,10 @@ module MyRouter =
                     |> template "websockets"
 
                 GET "/todos/"
+                    |> template "todos"
+        
+                GET "/securetodos/"
+                    |> matchRestrict (fun ctx -> if (not(DigestAuthentication.authenticate ctx)) then RestrictedAndHandled else NotRestricted)
                     |> template "todos"
         
                 (group "/api/"
@@ -63,20 +71,25 @@ module MyRouter =
                         |> restrict (fun ctx -> ctx.context.Request.ContentType.Contains "application/json")
                         |> action (fun ctx ->
                             let textReader = new StreamReader(ctx.context.Request.Body, System.Text.Encoding.UTF8)
-                            let todoItem = JsonConvert.DeserializeObject<TodoItem>(textReader.ReadToEnd())
+                            let json = textReader.ReadToEnd()
+                            let todoItem = JsonConvert.DeserializeObject<TodoItem>(json)
                             todos.Add(todoItem)
                             ctx.Created ""
+                            webSockets |> Seq.iter(fun socket -> sendText socket json)
                             ContinueRequest)
-                ]                
-                |> restrict (fun ctx -> ctx.context.Request.ContentType.Contains "application/json"));]
+                ]
+                // |> view "<html><body>Hello World</body></html>"
+                |> restrict (fun ctx -> ctx.context.Request.ContentType.Contains "application/json"));
+            ]
         ]
 
     type MyRouterState(applicationRootDirectory: string) = 
+        let webSockets = HashSet<WebSocketContext>()
         let todos = List<TodoItem>()
         member self.Todos with get() = todos
         member self.ApplicationRootDirectory with get() = applicationRootDirectory
         member self.Templates = MyTemplateContainer(TemplateState applicationRootDirectory)
-        member self.Routes with get() = myRoutes self.Templates self.Todos
+        member self.Routes with get() = myRoutes self.Templates self.Todos webSockets
 
     type MyRouter(routerState: MyRouterState) =
         inherit Router(routerState.Routes)

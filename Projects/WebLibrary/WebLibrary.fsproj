@@ -54,6 +54,7 @@
   <ItemGroup>
     <Compile Include="MyTemplates.fs" />
     <Compile Include="WebSocket.fs" />
+    <Compile Include="SillyAuthentication.fs" />
     <Compile Include="MyRouter.fs" />
     <None Include="packages.config" />
   </ItemGroup>
